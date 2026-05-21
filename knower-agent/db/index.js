@@ -71,13 +71,15 @@ function initTables() {
 
 async function saveScript(content, analysis, result) {
   const db = await getDb()
+  // 先查当前最大 id
+  const maxRes = db.exec('SELECT COALESCE(MAX(id), 0) FROM scripts')
+  const nextId = (maxRes[0]?.values[0][0] || 0) + 1
   db.run(
-    'INSERT INTO scripts (content, analysis, result) VALUES (?, ?, ?)',
-    [content, JSON.stringify(analysis), JSON.stringify(result)]
+    'INSERT INTO scripts (id, content, analysis, result) VALUES (?, ?, ?, ?)',
+    [nextId, content, JSON.stringify(analysis), JSON.stringify(result)]
   )
   saveDb()
-  const res = db.exec('SELECT last_insert_rowid() as id')
-  return res[0]?.values[0][0]
+  return nextId
 }
 
 async function getScript(id) {
@@ -109,10 +111,11 @@ async function listScripts(limit = 20) {
 
 async function createConversation(title) {
   const db = await getDb()
-  db.run('INSERT INTO conversations (title) VALUES (?)', [title || '新对话'])
-  const res = db.exec('SELECT last_insert_rowid() as id')
+  const maxRes = db.exec('SELECT COALESCE(MAX(id), 0) FROM conversations')
+  const nextId = (maxRes[0]?.values[0][0] || 0) + 1
+  db.run('INSERT INTO conversations (id, title) VALUES (?, ?)', [nextId, title || '新对话'])
   saveDb()
-  return res[0]?.values[0][0]
+  return nextId
 }
 
 async function updateConversationTitle(id, title) {
