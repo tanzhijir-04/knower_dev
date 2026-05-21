@@ -1,7 +1,4 @@
-import electron from 'electron'
-const { app, BrowserWindow, ipcMain, nativeImage } = electron
-console.log('[DEBUG] electron module keys:', Object.keys(electron))
-console.log('[DEBUG] app:', typeof app, app)
+import { app, BrowserWindow, ipcMain, nativeImage } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
 
@@ -12,8 +9,11 @@ const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
 
 let mainWindow: BrowserWindow | null = null
 
+// ============================================================
+//  窗口创建
+// ============================================================
+
 function createWindow() {
-  // 设置窗口图标
   const assetsDir = path.join(__dirname, '..', 'assets')
   let iconPath: string
   if (process.platform === 'win32') {
@@ -23,7 +23,6 @@ function createWindow() {
   } else {
     iconPath = path.join(assetsDir, 'icon-256x256.png')
   }
-
   const icon = nativeImage.createFromPath(iconPath)
 
   mainWindow = new BrowserWindow({
@@ -54,23 +53,25 @@ function createWindow() {
   })
 }
 
+// ============================================================
+//  App 生命周期
+// ============================================================
+
 app.whenReady().then(() => {
   createWindow()
-
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow()
-    }
+    if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 })
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit()
-  }
+  if (process.platform !== 'darwin') app.quit()
 })
 
-// --- Settings persistence via JSON file ---
+// ============================================================
+//  Settings 持久化
+// ============================================================
+
 const SETTINGS_PATH = path.join(app.getPath('userData'), 'settings.json')
 
 function readSettings(): Record<string, unknown> {
@@ -88,8 +89,7 @@ function writeSettings(settings: Record<string, unknown>) {
 }
 
 ipcMain.handle('get-store', (_event, key: string) => {
-  const settings = readSettings()
-  return settings[key] ?? null
+  return readSettings()[key] ?? null
 })
 
 ipcMain.handle('get-store-all', () => {
@@ -103,7 +103,10 @@ ipcMain.handle('set-store', (_event, key: string, value: unknown) => {
   return true
 })
 
-// --- Agent: 在主进程内直接运行 ---
+// ============================================================
+//  Agent
+// ============================================================
+
 let currentAbortController: AbortController | null = null
 
 ipcMain.handle('agent-run', async (event, script: string, platforms: string[]) => {
@@ -144,7 +147,10 @@ ipcMain.handle('agent-stop', () => {
   return true
 })
 
-// --- 会话管理 ---
+// ============================================================
+//  会话管理
+// ============================================================
+
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require('../knower-agent/db')
 

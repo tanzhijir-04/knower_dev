@@ -67,6 +67,42 @@ function initTables() {
       updated_at TEXT NOT NULL
     )
   `)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS overview_data (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      platform TEXT NOT NULL DEFAULT 'bilibili',
+      total_play INTEGER DEFAULT 0,
+      total_comment INTEGER DEFAULT 0,
+      total_danmaku INTEGER DEFAULT 0,
+      total_like INTEGER DEFAULT 0,
+      total_share INTEGER DEFAULT 0,
+      total_favorite INTEGER DEFAULT 0,
+      total_coin INTEGER DEFAULT 0,
+      follower_count INTEGER DEFAULT 0,
+      follower_change_today INTEGER DEFAULT 0,
+      revenue_year REAL DEFAULT 0,
+      fetched_at DATETIME DEFAULT (datetime('now','localtime'))
+    )
+  `)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS video_data (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      platform TEXT NOT NULL DEFAULT 'bilibili',
+      video_id TEXT NOT NULL,
+      title TEXT,
+      published_at TEXT,
+      duration INTEGER DEFAULT 0,
+      play_count INTEGER DEFAULT 0,
+      like_count INTEGER DEFAULT 0,
+      comment_count INTEGER DEFAULT 0,
+      share INTEGER DEFAULT 0,
+      coin INTEGER DEFAULT 0,
+      favorite INTEGER DEFAULT 0,
+      danmaku INTEGER DEFAULT 0,
+      fetched_at DATETIME DEFAULT (datetime('now','localtime')),
+      UNIQUE(platform, video_id)
+    )
+  `)
 }
 
 async function saveScript(content, analysis, result) {
@@ -211,9 +247,90 @@ async function getMemories(accountId) {
   }))
 }
 
+// --- 平台数据 ---
+
+async function saveOverviewData(data) {
+  const db = await getDb()
+  db.run(
+    `INSERT INTO overview_data
+      (platform, total_play, total_comment, total_danmaku, total_like,
+       total_share, total_favorite, total_coin, follower_count,
+       follower_change_today, revenue_year)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      data.platform || 'bilibili',
+      data.total_play || 0,
+      data.total_comment || 0,
+      data.total_danmaku || 0,
+      data.total_like || 0,
+      data.total_share || 0,
+      data.total_favorite || 0,
+      data.total_coin || 0,
+      data.follower_count || 0,
+      data.follower_change_today || 0,
+      data.revenue_year || 0,
+    ]
+  )
+  saveDb()
+}
+
+async function getOverviewData(platform) {
+  const db = await getDb()
+  const res = db.exec(
+    'SELECT * FROM overview_data WHERE platform = ? ORDER BY id DESC LIMIT 1',
+    [platform || 'bilibili']
+  )
+  if (!res.length || !res[0].values.length) return null
+  const row = {}
+  res[0].columns.forEach((col, i) => { row[col] = res[0].values[0][i] })
+  return row
+}
+
+async function saveVideoData(videos) {
+  const db = await getDb()
+  for (const v of videos) {
+    db.run(
+      `INSERT OR REPLACE INTO video_data
+        (platform, video_id, title, published_at, duration,
+         play_count, like_count, comment_count, share, coin, favorite, danmaku)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        v.platform || 'bilibili',
+        v.video_id,
+        v.title || '',
+        v.published_at || null,
+        v.duration || 0,
+        v.play_count || 0,
+        v.like_count || 0,
+        v.comment_count || 0,
+        v.share || 0,
+        v.coin || 0,
+        v.favorite || 0,
+        v.danmaku || 0,
+      ]
+    )
+  }
+  saveDb()
+}
+
+async function getVideoData(platform, limit = 50) {
+  const db = await getDb()
+  const res = db.exec(
+    `SELECT * FROM video_data WHERE platform = ? ORDER BY published_at DESC LIMIT ${limit}`,
+    [platform || 'bilibili']
+  )
+  if (!res.length) return []
+  return res[0].values.map((row) => {
+    const obj = {}
+    res[0].columns.forEach((col, i) => { obj[col] = row[i] })
+    return obj
+  })
+}
+
 module.exports = {
   getDb, saveScript, getScript, listScripts,
   createConversation, updateConversationTitle, deleteConversation,
   listConversations, addMessage, getMessages,
   upsertMemory, getMemories,
+  saveOverviewData, getOverviewData, saveVideoData, getVideoData,
 }
