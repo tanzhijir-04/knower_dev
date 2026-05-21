@@ -1,0 +1,154 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    font-family: 'JetBrains Mono', system-ui, sans-serif;
+    background: #0e150f;
+    color: #dde5da;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow: hidden;
+  }
+
+  /* macOS drag region for title bar */
+  .titlebar-drag {
+    -webkit-app-region: drag;
+  }
+
+  .no-drag {
+    -webkit-app-region: no-drag;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #3d4a3e;
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #525252;
+  }
+
+  /* Material Symbols */
+  .material-symbols-outlined {
+    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  }
+}
+
+@layer components {
+  .sidebar-btn {
+    @apply flex items-center justify-center w-10 h-10 rounded-lg transition-colors duration-150;
+    @apply text-on-surface-variant hover:text-on-surface hover:bg-surface-container;
+  }
+
+  .sidebar-btn.active {
+    @apply text-primary bg-surface-container;
+  }
+
+  .chat-bubble {
+    @apply bg-surface-container rounded-xl px-4 py-3 max-w-[85%];
+    @apply text-on-surface text-sm leading-relaxed;
+  }
+
+  .chat-bubble.user {
+    @apply bg-primary/10 text-on-surface ml-auto;
+  }
+
+  .chat-bubble.assistant {
+    @apply bg-surface-container text-on-surface;
+  }
+
+  .suggestion-card {
+    @apply bg-surface-low border border-outline-variant/50 rounded-xl px-4 py-3;
+    @apply cursor-pointer transition-all duration-150;
+    @apply hover:border-primary/30 hover:bg-surface-container;
+  }
+
+  .input-bar {
+    @apply bg-surface-low border border-outline-variant/30 rounded-2xl;
+    @apply px-4 py-3 flex items-end gap-3;
+    @apply focus-within:border-primary/30 transition-colors duration-150;
+  }
+
+  /* Markdown prose styles for chat bubbles */
+  .chat-bubble .prose {
+    color: inherit;
+  }
+
+  .chat-bubble .prose h1,
+  .chat-bubble .prose h2,
+  .chat-bubble .prose h3 {
+    color: var(--color-on-surface);
+    font-weight: 600;
+    margin-top: 1em;
+    margin-bottom: 0.5em;
+  }
+
+  .chat-bubble .prose h1 { font-size: 1.15em; }
+  .chat-bubble .prose h2 { font-size: 1.05em; }
+  .chat-bubble .prose h3 { font-size: 1em; }
+
+  .chat-bubble .prose p {
+    margin-bottom: 0.6em;
+    line-height: 1.7;
+  }
+
+  .chat-bubble .prose ul,
+  .chat-bubble .prose ol {
+    padding-left: 1.2em;
+    margin-bottom: 0.6em;
+  }
+
+  .chat-bubble .prose li {
+    margin-bottom: 0.25em;
+    line-height: 1.6;
+  }
+
+  .chat-bubble .prose strong {
+    color: var(--color-primary);
+    font-weight: 600;
+  }
+
+  .chat-bubble .prose code {
+    background: rgba(255, 255, 255, 0.06);
+    padding: 0.15em 0.4em;
+    border-radius: 4px;
+    font-size: 0.9em;
+  }
+
+  .chat-bubble .prose pre {
+    background: rgba(0, 0, 0, 0.3);
+    padding: 0.75em 1em;
+    border-radius: 8px;
+    overflow-x: auto;
+    margin-bottom: 0.6em;
+  }
+
+  .chat-bubble .prose pre code {
+    background: none;
+    padding: 0;
+  }
+
+  .chat-bubble .prose blockquote {
+    border-left: 3px solid var(--color-primary);
+    padding-left: 0.8em;
+    margin-bottom: 0.6em;
+    opacity: 0.8;
+  }
+}

@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <clipPath id="clip-circle">
+      <circle cx="256" cy="256" r="256" />
+    </clipPath>
+  </defs>
+  <g clipPath="url(#clip-circle)">
+    <!-- Background -->
+    <rect width="512" height="512" fill="#101A2F" />
+    <!-- Stars -->
+    <g fill="#FFFFFF">
+      <circle cx="100" cy="120" r="4" />
+      <circle cx="230" cy="80" r="3.5" />
+      <circle cx="430" cy="110" r="4.5" />
+      <circle cx="450" cy="210" r="3" />
+      <circle cx="120" cy="250" r="2.5" />
+      <polygon points="320,50 324,58 332,60 324,62 320,70 316,62 308,60 316,58" fill="#FFFFFF"/>
+    </g>
+    <!-- Sun -->
+    <path d="M 330 395 A 85 85 0 0 1 500 395 Z" fill="#FFFFFF" />
+    <rect x="310" y="405" width="200" height="8" rx="4" fill="#FFFFFF" />
+    <rect x="360" y="425" width="100" height="8" rx="4" fill="#FFFFFF" />
+    <rect x="420" y="445" width="40" height="8" rx="4" fill="#FFFFFF" />
+    <!-- Sun rays -->
+    <g stroke="#FFFFFF" stroke-width="8" stroke-linecap="round">
+      <line x1="415" y1="280" x2="415" y2="230" />
+      <line x1="345" y1="305" x2="305" y2="265" />
+      <line x1="485" y1="305" x2="525" y2="265" />
+    </g>
+    <!-- Hill -->
+    <path d="M -20 440 Q 150 360 550 430 L 550 550 L -20 550 Z" fill="#FFFFFF" />
+    <path d="M -20 430 Q 150 350 550 420 L 550 440 Q 150 370 -20 450 Z" fill="#101A2F" opacity="0.5" />
+    <!-- Bird body -->
+    <path d="M 250 135 C 220 90, 160 100, 120 150 C 90 190, 70 270, 40 360 L 15 400 L 50 435 L 90 375 C 140 420, 230 370, 260 260 C 275 190, 260 165, 245 155 Z" fill="#FFFFFF" />
+    <!-- Beak -->
+    <path d="M 250 135 Q 280 115 295 110 Q 275 135 245 145 Z" fill="#FFFFFF" />
+    <path d="M 242 152 Q 275 145 285 140 Q 265 160 252 165 Z" fill="#FFFFFF" />
+    <!-- Wing -->
+    <path d="M 145 220 C 195 210, 240 240, 240 310 C 240 380, 170 420, 80 445 C 120 380, 115 300, 145 220 Z" fill="#101A2F" />
+    <!-- Eye -->
+    <circle cx="230" cy="135" r="5.5" fill="#101A2F" />
+  </g>
+</svg>

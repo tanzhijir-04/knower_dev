@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+dist-electron/
+release/
+build/
+
+# Generated icons (from SVG sources via scripts/svg-to-png.js)
+assets/icon-*.png
+assets/icon.ico
+assets/icon.icns
+
+# Environment & secrets
+.env
+.env.local
+
+# User data (SQLite database)
+knower-agent/knower.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+
+# Brand materials (design source files, not needed in repo)
+品牌物料/

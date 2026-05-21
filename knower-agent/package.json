@@ -1,0 +1,14 @@
+{
+  "name": "knower-agent",
+  "version": "0.1.0",
+  "description": "知更 Agent Core - 创作台核心逻辑",
+  "main": "index.js",
+  "scripts": {
+    "test": "node index.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "sql.js": "^1.11.0",
+    "dotenv": "^16.4.7"
+  }
+}
