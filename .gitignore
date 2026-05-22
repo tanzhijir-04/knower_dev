@@ -34,3 +34,20 @@ desktop.ini
 
 # Brand materials (design source files, not needed in repo)
 品牌物料/
+
+# Claude Code memory files
+MEMORY.md
+db_issues.md
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Crawler (Python venv & runtime data)
+knower-agent/crawler/.venv/
+knower-agent/crawler/mediasrc/data/
+knower-agent/crawler/mediasrc/*_user_data_dir/
+knower-agent/crawler/mediasrc/browser_data/
+knower-agent/crawler/mediasrc/database/sqlite_tables.db
+knower-agent/crawler/mediasrc/login_state/

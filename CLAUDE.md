@@ -41,6 +41,8 @@ npm run preview   # 预览前端产物
 | `src/App.tsx` | 页面路由（`Page` 类型） |
 | `src/components/ChatView.tsx` | 创作台聊天界面，**MVP 核心** |
 | `knower-agent/` | Agent Core 子项目（Node.js，独立于 Electron） |
+| `knower-agent/crawler/` | **爬虫模块**（MediaCrawler 集成，支持 B站/抖音/小红书/微博） |
+| `knower-agent/lib/crawler.js` | 爬虫 Node.js 封装（子进程调用 Python） |
 | `src/components/SettingsView.tsx` | API 配置页（provider/key/baseUrl/model） |
 | `src/index.css` | Tailwind 组件样式 + 滚动条 + macOS 拖拽区域 |
 | `tailwind.config.js` | 全部颜色和字体定义 |
@@ -60,9 +62,50 @@ npm run preview   # 预览前端产物
 4. **脚本输入体验** — 富文本编辑、文件导入
 
 ### 后续阶段（PRD 第二、三期）
-- Chrome CDP 数据采集模块
+- ~~Chrome CDP 数据采集模块~~ ✅ 已集成 MediaCrawler
 - SQLite 本地数据存储
 - AI 选题建议（基于历史数据分析爆款规律）
+
+## 爬虫模块（已集成）
+
+MediaCrawler 多平台爬虫已集成到 `knower-agent/crawler/`，支持 B站、抖音、小红书、微博 四个平台。
+
+### 初始化
+
+```bash
+cd knower-agent/crawler
+setup_env.bat  # 创建 venv + 安装依赖 + 安装 Playwright
+```
+
+### 使用方式
+
+```javascript
+// Node.js 调用
+const { runCrawler } = require('./knower-agent/lib/crawler');
+const result = await runCrawler('bili', '关键词', { maxNotes: 10 });
+
+// Electron IPC 调用
+const result = await window.electronAPI.runCrawler('bili', '关键词', { maxNotes: 10 });
+```
+
+### 平台参数
+
+| 平台 | platform 值 | 说明 |
+|------|------------|------|
+| B站 | `bili` | 支持 `specifiedId`, `creatorId` |
+| 抖音 | `dy` | 需要 Node.js（JS 签名） |
+| 小红书 | `xhs` | - |
+| 微博 | `wb` | - |
+
+### 数据库表
+
+新增 `crawl_tasks` 和 `crawl_content` 表，自动存储爬取结果到 `knower.db`。
+
+### 注意事项
+
+1. 首次运行需扫码登录，登录状态保存在 `mediasrc/login_state/`
+2. 建议 `ENABLE_CDP_MODE = False`（除非有远程调试 Chrome）
+3. `.gitignore` 已排除 `.venv/`、`data/`、`*_user_data_dir/`、`login_state/`
 
 ## 重要约定
 

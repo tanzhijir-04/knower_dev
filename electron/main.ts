@@ -180,3 +180,356 @@ ipcMain.handle('conv-rename', async (_event, id: number, title: string) => {
   await db.updateConversationTitle(id, title)
   return true
 })
+
+// ============================================================
+//  爬虫
+// ============================================================
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { runCrawler } = require('../knower-agent/lib/crawler')
+
+ipcMain.handle('crawler-run', async (event, platform: string, keywords: string, options: Record<string, unknown> = {}) => {
+  event.sender.send('crawler-event', JSON.stringify({ type: 'started', platform }))
+  try {
+    const result = await runCrawler(platform, keywords, options, (msg: string) => {
+      event.sender.send('crawler-event', JSON.stringify({ type: 'progress', message: msg }))
+    })
+    const taskId = await db.saveCrawlTask(platform, keywords, options.crawlerType as string || 'search', 'done', JSON.stringify(result))
+
+    // 确定来源信息
+    let sourceUid = ''
+    let sourceName = ''
+    if (options.crawlerType === 'creator' && options.creatorId) {
+      sourceUid = options.creatorId as string
+      sourceName = options.creatorId as string
+    } else if (keywords) {
+      sourceUid = `keyword_${keywords}`
+      sourceName = keywords
+    }
+
+    if (result.contents && result.contents.length > 0) {
+      await db.saveCrawlContentBatch(taskId, platform, result.contents, sourceUid, sourceName)
+    }
+    // 如果是创作者爬取，保存创作者记录
+    if (options.crawlerType === 'creator' && sourceUid) {
+      // 尝试从爬取结果中获取创作者昵称
+      const creatorName = result.creators?.[0]?.nickname || sourceName || sourceUid
+      const creatorAvatar = result.creators?.[0]?.avatar || ''
+      await db.saveCreator(sourceUid, creatorName, creatorAvatar)
+    }
+    if (result.creators && result.creators.length > 0) {
+      await db.saveCrawlCreatorsBatch(taskId, platform, result.creators)
+    }
+    event.sender.send('crawler-event', JSON.stringify({ type: 'done', taskId, count: result.stats?.total_contents || 0 }))
+    return { success: true, taskId, count: result.stats?.total_contents || 0, sourceUid, sourceName }
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err)
+    event.sender.send('crawler-event', JSON.stringify({ type: 'error', message }))
+    return { success: false, error: message }
+  }
+})
+
+ipcMain.handle('crawler-tasks', async () => {
+  return await db.getCrawlTasks()
+})
+
+ipcMain.handle('crawler-content', async (_event, taskId: number) => {
+  return await db.getCrawlContent(taskId)
+})
+
+ipcMain.handle('crawler-creators', async (_event, taskId: number) => {
+  return await db.getCrawlCreators(taskId)
+})
+
+ipcMain.handle('get-sources', async (_event, platform: string) => {
+  return await db.getSourceList(platform || null)
+})
+
+ipcMain.handle('get-videos-by-source', async (_event, platform: string, sourceUid: string) => {
+  return await db.getVideosBySource(platform || 'bili', sourceUid || '')
+})
+
+// ============================================================
+//  创作者管理
+// ============================================================
+
+ipcMain.handle('clean-old-data', async () => {
+  await db.cleanOldData()
+  return true
+})
+
+ipcMain.handle('get-creators', async () => {
+  return await db.getCreators()
+})
+
+ipcMain.handle('star-creator', async (_event, uid: string) => {
+  await db.starCreator(uid)
+  return true
+})
+
+ipcMain.handle('pin-creator', async (_event, uid: string) => {
+  await db.pinCreator(uid)
+  return true
+})
+
+ipcMain.handle('delete-creator', async (_event, uid: string) => {
+  await db.deleteCreator(uid)
+  return true
+})
+
+ipcMain.handle('export-source-data', async (_event, sourceUid: string) => {
+  const videos = await db.getVideosBySource('bili', sourceUid)
+  const creators = await db.getCreators()
+  const creator = creators.find((c: { uid: string }) => c.uid === sourceUid)
+  const exportData = {
+    source: {
+      uid: sourceUid,
+      name: creator?.name || sourceUid,
+      exportedAt: new Date().toISOString(),
+    },
+    videos: videos.map((v: Record<string, unknown>) => ({
+      title: v.title,
+      playCount: v.playCount,
+      likeCount: v.likeCount,
+      commentCount: v.commentCount,
+      shareCount: v.shareCount,
+      category: v.category,
+      createdAt: v.createdAt,
+    })),
+  }
+  const { dialog } = require('electron')
+  const result = await dialog.showSaveDialog({
+    defaultPath: `${sourceUid}_${Date.now()}.json`,
+    filters: [{ name: 'JSON', extensions: ['json'] }],
+  })
+  if (!result.canceled && result.filePath) {
+    fs.writeFileSync(result.filePath, JSON.stringify(exportData, null, 2), 'utf-8')
+    return true
+  }
+  return false
+})
+
+// ============================================================
+//  数据分析
+// ============================================================
+
+ipcMain.handle('analyze-video-data', async (_event, platform: string, sourceUid?: string) => {
+  const settings = readSettings()
+  const videos = sourceUid
+    ? await db.getVideosBySource(platform || 'bili', sourceUid)
+    : await db.getAllCrawlContent(platform || 'bili')
+  if (!videos.length) return null
+
+  // 从 raw_json 提取完整指标
+  const enriched = videos.map((v: Record<string, unknown>) => {
+    const raw = (v.rawJson || {}) as Record<string, string>
+    return {
+      title: v.title as string,
+      playCount: v.playCount as number,
+      likeCount: v.likeCount as number,
+      commentCount: v.commentCount as number,
+      shareCount: v.shareCount as number,
+      coinCount: parseInt(raw.video_coin_count) || 0,
+      favoriteCount: parseInt(raw.video_favorite_count) || 0,
+      danmaku: parseInt(raw.video_danmaku) || 0,
+      createdAt: v.createdAt as string,
+      authorName: v.authorName as string,
+      desc: v.desc as string,
+    }
+  })
+
+  // 本地预计算统计
+  const totalPlay = enriched.reduce((s: number, v: { playCount: number }) => s + v.playCount, 0)
+  const totalLike = enriched.reduce((s: number, v: { likeCount: number }) => s + v.likeCount, 0)
+  const totalComment = enriched.reduce((s: number, v: { commentCount: number }) => s + v.commentCount, 0)
+  const avgPlay = Math.round(totalPlay / enriched.length)
+  const avgLike = Math.round(totalLike / enriched.length)
+
+  // 互动率排行
+  const withEngagement = enriched.map((v: typeof enriched[0]) => ({
+    ...v,
+    engagementRate: v.playCount > 0
+      ? ((v.likeCount + v.coinCount + v.favoriteCount + v.commentCount + v.danmaku) / v.playCount * 100)
+      : 0,
+  })).sort((a: { engagementRate: number }, b: { engagementRate: number }) => b.engagementRate - a.engagementRate)
+
+  // 构造分析 prompt
+  const videoDataStr = enriched.slice(0, 50).map((v: { title: string; playCount: number; likeCount: number; commentCount: number; coinCount: number; favoriteCount: number; danmaku: number; createdAt: string }, i: number) =>
+    `${i + 1}. 标题: "${v.title}" | 播放: ${v.playCount} | 点赞: ${v.likeCount} | 评论: ${v.commentCount} | 投币: ${v.coinCount} | 收藏: ${v.favoriteCount} | 弹幕: ${v.danmaku} | 发布: ${v.createdAt}`
+  ).join('\n')
+
+  const prompt = `你是一位资深的视频数据分析专家。请基于以下视频数据进行深度分析，返回严格的 JSON 格式。
+
+## 视频数据（共 ${enriched.length} 条，按播放量降序）
+${videoDataStr}
+
+## 请返回以下 JSON 结构（不要有任何其他文字）：
+{
+  "topTopics": [
+    { "topic": "选题方向关键词", "avgPlay": 平均播放量, "count": 视频数量 }
+  ],
+  "titlePatterns": "分析高播放视频的标题特征（长度、句式、是否含数字/反问/反差等），50字以内",
+  "bestDuration": "根据数据推断最佳时长区间（0-3min / 3-5min / 5-10min / 10min+）",
+  "bestTime": "分析发布时间规律，哪个时间段发布表现最好",
+  "suggestions": [
+    "基于数据的具体选题方向建议",
+    "基于标题规律的标题优化建议",
+    "基于发布时间的发布策略建议"
+  ]
+}
+
+## 要求：
+1. topTopics 提取 3-5 个高频选题方向，按平均播放量降序
+2. suggestions 每条要具体可执行，引用数据依据
+3. 只输出 JSON，不要任何其他文字`
+
+  // 调用 LLM（用用户配置的 API）
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const Anthropic = require('../knower-agent/node_modules/@anthropic-ai/sdk')
+  const client = new Anthropic({
+    apiKey: settings.apiKey as string,
+    ...(settings.baseUrl ? { baseURL: settings.baseUrl as string } : {}),
+  })
+
+  const response = await client.messages.create({
+    model: (settings.model as string) || 'claude-sonnet-4-20250514',
+    max_tokens: 2048,
+    messages: [{ role: 'user', content: prompt }],
+  })
+
+  const text = response.content
+    .filter((b: { type: string }) => b.type === 'text')
+    .map((b: { type: string; text: string }) => b.text)
+    .join('')
+
+  // 解析 JSON
+  let analysis
+  try {
+    const jsonMatch = text.match(/\{[\s\S]*\}/)
+    analysis = jsonMatch ? JSON.parse(jsonMatch[0]) : {}
+  } catch {
+    analysis = {}
+  }
+
+  return {
+    overview: {
+      totalVideos: enriched.length,
+      totalPlay,
+      totalLike,
+      totalComment,
+      avgPlay,
+      avgLike,
+    },
+    topByEngagement: withEngagement.slice(0, 20).map((v: { title: string; playCount: number; engagementRate: number }) => ({
+      title: v.title,
+      playCount: v.playCount,
+      engagementRate: Math.round(v.engagementRate * 100) / 100,
+    })),
+    ...analysis,
+  }
+})
+
+// ============================================================
+//  AI 视频分类
+// ============================================================
+
+ipcMain.handle('auto-categorize', async (_event, platform: string) => {
+  const settings = readSettings()
+  const videos = await db.getAllCrawlContent(platform || 'bili')
+  if (!videos.length) return { success: false, error: '暂无视频数据' }
+
+  const uncategorized = videos.filter((v: { category?: string }) => !v.category || v.category === '未分类')
+  if (!uncategorized.length) return { success: true, message: '所有视频已分类', categorized: 0 }
+
+  const videoList = uncategorized.map((v: { contentId: string; title: string; desc?: string; authorName?: string; rawJson?: Record<string, string> }, i: number) => {
+    const raw = v.rawJson || {}
+    const sourceKeyword = raw.source_keyword || ''
+    const desc = (v.desc || '').slice(0, 100)
+    const parts = [
+      `${i + 1}. [${v.contentId}]`,
+      `标题: ${v.title}`,
+      `作者: ${v.authorName || ''}`,
+      desc ? `简介: ${desc}` : '',
+      sourceKeyword ? `来源关键词: ${sourceKeyword}` : '',
+    ].filter(Boolean)
+    return parts.join(' | ')
+  }).join('\n')
+
+  const prompt = `你是一位视频内容分类专家。请根据视频的标题、简介描述、作者信息和来源关键词，将以下视频分类到最合适的类别中。
+
+## 视频列表（共 ${uncategorized.length} 条）
+每条格式：序号. [ID] 标题: xxx | 作者: xxx | 简介: xxx | 来源关键词: xxx
+${videoList}
+
+## 分类要求：
+1. 综合标题、简介描述、作者风格来判断类别，不要只看标题
+2. 常见类别参考：科技数码、游戏娱乐、生活日常、知识科普、美食烹饪、旅行探险、影视剪辑、音乐舞蹈、教育学习、时事热点、运动健身、萌宠动物、时尚穿搭、汽车交通、职场商务、心理情感、艺术设计、其他
+3. 如果现有类别不合适，可以自定义新类别
+
+## 输出格式（严格按此格式，每行一条，不要有任何其他文字）：
+序号|分类名称
+序号|分类名称
+...
+
+例如：
+1|科技数码
+2|游戏娱乐
+3|科技数码
+
+## 要求：
+- 每行格式：序号|分类名称
+- 不要输出标题、解释或其他内容
+- 如果某个视频无法判断，分类为"其他"`
+
+  const Anthropic = require('../knower-agent/node_modules/@anthropic-ai/sdk')
+  const client = new Anthropic({
+    apiKey: settings.apiKey as string,
+    ...(settings.baseUrl ? { baseURL: settings.baseUrl as string } : {}),
+  })
+
+  try {
+    const response = await client.messages.create({
+      model: (settings.model as string) || 'claude-sonnet-4-20250514',
+      max_tokens: 2048,
+      messages: [{ role: 'user', content: prompt }],
+    })
+
+    const text = response.content
+      .filter((b: { type: string }) => b.type === 'text')
+      .map((b: { type: string; text: string }) => b.text)
+      .join('')
+
+    // 解析 "序号|分类" 格式
+    const lines = text.trim().split('\n').filter((l: string) => l.includes('|'))
+    const updates: { contentId: string; category: string }[] = []
+
+    for (const line of lines) {
+      const parts = line.split('|')
+      if (parts.length >= 2) {
+        const idx = parseInt(parts[0].trim()) - 1
+        const category = parts[1].trim()
+        if (idx >= 0 && idx < uncategorized.length && category) {
+          updates.push({ contentId: uncategorized[idx].contentId, category })
+        }
+      }
+    }
+
+    if (updates.length > 0) {
+      await db.categorizeVideoBatch(updates)
+    }
+
+    return { success: true, categorized: updates.length, total: uncategorized.length }
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err)
+    return { success: false, error: message }
+  }
+})
+
+ipcMain.handle('get-categories', async (_event, platform: string) => {
+  return await db.getAllCategories(platform || null)
+})
+
+ipcMain.handle('update-category', async (_event, contentId: string, category: string) => {
+  await db.categorizeVideo(contentId, category)
+  return true
+})

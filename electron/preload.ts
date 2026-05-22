@@ -22,4 +22,30 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getMessages: (conversationId: number) => ipcRenderer.invoke('conv-messages', conversationId),
   addMessage: (conversationId: number, role: string, content: string) =>
     ipcRenderer.invoke('msg-add', conversationId, role, content),
+  // 爬虫
+  runCrawler: (platform: string, keywords: string, options?: Record<string, unknown>) =>
+    ipcRenderer.invoke('crawler-run', platform, keywords, options || {}),
+  onCrawlerEvent: (callback: (event: string) => void) => {
+    const handler = (_event: unknown, data: string) => callback(data)
+    ipcRenderer.on('crawler-event', handler)
+    return () => ipcRenderer.removeListener('crawler-event', handler)
+  },
+  listCrawlTasks: () => ipcRenderer.invoke('crawler-tasks'),
+  getCrawlContent: (taskId: number) => ipcRenderer.invoke('crawler-content', taskId),
+  getCrawlCreators: (taskId: number) => ipcRenderer.invoke('crawler-creators', taskId),
+  analyzeVideoData: (platform: string) => ipcRenderer.invoke('analyze-video-data', platform),
+  // 来源
+  getSources: (platform: string) => ipcRenderer.invoke('get-sources', platform),
+  getVideosBySource: (platform: string, sourceUid: string) => ipcRenderer.invoke('get-videos-by-source', platform, sourceUid),
+  // 创作者
+  cleanOldData: () => ipcRenderer.invoke('clean-old-data'),
+  getCreators: () => ipcRenderer.invoke('get-creators'),
+  starCreator: (uid: string) => ipcRenderer.invoke('star-creator', uid),
+  pinCreator: (uid: string) => ipcRenderer.invoke('pin-creator', uid),
+  deleteCreator: (uid: string) => ipcRenderer.invoke('delete-creator', uid),
+  exportSourceData: (sourceUid: string) => ipcRenderer.invoke('export-source-data', sourceUid),
+  // 分类
+  autoCategorize: (platform: string) => ipcRenderer.invoke('auto-categorize', platform),
+  getCategories: (platform: string) => ipcRenderer.invoke('get-categories', platform),
+  updateCategory: (contentId: string, category: string) => ipcRenderer.invoke('update-category', contentId, category),
 })
