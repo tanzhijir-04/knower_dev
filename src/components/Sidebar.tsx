@@ -159,7 +159,27 @@ export default function Sidebar({ currentPage, onNavigate, onOpenConversation, c
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editingTitle, setEditingTitle] = useState('')
   const [activeConversationId, setActiveConversationId] = useState<number | null>(null)
+  const [theme, setTheme] = useState<'dark' | 'light' | 'system'>('dark')
   const width = collapsed ? 56 : 240
+
+  const handleThemeChange = (newTheme: 'dark' | 'light' | 'system') => {
+    setTheme(newTheme)
+    const root = document.documentElement
+    root.classList.remove('theme-dark', 'theme-light')
+    if (newTheme === 'system') {
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+      root.classList.add(prefersDark ? 'theme-dark' : 'theme-light')
+    } else {
+      root.classList.add(`theme-${newTheme}`)
+    }
+    window.electronAPI?.setStore('theme', newTheme)
+  }
+
+  useEffect(() => {
+    window.electronAPI?.getStore('theme').then((saved) => {
+      if (saved) handleThemeChange(saved as 'dark' | 'light' | 'system')
+    })
+  }, [])
 
   const loadConversations = () => {
     window.electronAPI?.listConversations().then((list: Conversation[]) => {
@@ -247,9 +267,9 @@ export default function Sidebar({ currentPage, onNavigate, onOpenConversation, c
       {/* Logo */}
       <div className="flex items-center gap-3 px-4 py-4 border-b border-border/30">
         <img src={logoSvg} alt="知更" className="w-8 h-8 rounded-lg shrink-0" />
-        {!collapsed && (
-          <span className="text-sm font-semibold text-on-surface whitespace-nowrap">知更 Knower</span>
-        )}
+        <span className={`text-sm font-semibold text-on-surface whitespace-nowrap overflow-hidden transition-all duration-200 ${collapsed ? 'w-0 opacity-0' : 'w-auto opacity-100 delay-150'}`}>
+          知更 Knower
+        </span>
       </div>
 
       {/* Navigation */}
@@ -265,14 +285,16 @@ export default function Sidebar({ currentPage, onNavigate, onOpenConversation, c
             }`}
           >
             <span className="material-symbols-outlined text-[20px] shrink-0">{item.icon}</span>
-            {!collapsed && <span className="text-sm">{item.label}</span>}
+            <span className={`text-sm whitespace-nowrap overflow-hidden transition-all duration-200 ${collapsed ? 'w-0 opacity-0' : 'w-auto opacity-100 delay-100'}`}>
+              {item.label}
+            </span>
           </button>
         ))}
       </nav>
 
-      {/* Conversation history (chat page + expanded only) */}
-      {currentPage === 'chat' && !collapsed && (
-        <div className="flex-1 flex flex-col mt-4 overflow-hidden">
+      {/* Conversation history (chat page only) */}
+      {currentPage === 'chat' && (
+        <div className={`flex-1 flex flex-col mt-4 overflow-hidden transition-all duration-200 ${collapsed ? 'w-0 opacity-0 pointer-events-none' : 'w-auto opacity-100 delay-100'}`}>
           {/* Search box */}
           <div className="px-2 mb-2">
             <div className="relative">
@@ -281,7 +303,7 @@ export default function Sidebar({ currentPage, onNavigate, onOpenConversation, c
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="搜索对话..."
-                className="w-full bg-surface-container rounded-lg pl-7 pr-3 py-1.5 text-[11px] text-on-surface placeholder:text-mute outline-none focus:ring-1 focus:ring-primary/50"
+                className="w-full bg-surface-container rounded-lg pl-7 pr-3 py-1.5 text-[11px] text-on-surface placeholder:text-mute outline-none border border-transparent focus:border-outline-variant/50 transition-colors"
               />
             </div>
           </div>
@@ -316,8 +338,46 @@ export default function Sidebar({ currentPage, onNavigate, onOpenConversation, c
         </div>
       )}
 
-      {/* Collapse button */}
-      <div className="px-2 py-3 border-t border-border/30">
+      {/* Bottom bar: theme toggle + collapse */}
+      <div className="px-2 py-3 border-t border-border/30 space-y-2">
+        {/* Theme toggle — expanded */}
+        {!collapsed && (
+          <div className="flex items-center justify-center gap-1">
+            {([
+              { mode: 'light' as const, icon: 'light_mode', tip: '浅色模式' },
+              { mode: 'dark' as const, icon: 'dark_mode', tip: '深色模式' },
+              { mode: 'system' as const, icon: 'computer', tip: '跟随系统' },
+            ]).map(t => (
+              <button
+                key={t.mode}
+                onClick={() => handleThemeChange(t.mode)}
+                className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
+                  theme === t.mode ? 'bg-primary/20 text-primary' : 'text-mute hover:text-on-surface hover:bg-surface-container'
+                }`}
+                title={t.tip}
+              >
+                <span className="material-symbols-outlined text-[16px]">{t.icon}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Theme toggle — collapsed */}
+        {collapsed && (
+          <div className="flex justify-center">
+            <button
+              onClick={() => handleThemeChange(theme === 'dark' ? 'light' : theme === 'light' ? 'system' : 'dark')}
+              className="w-8 h-8 rounded-full flex items-center justify-center text-mute hover:text-on-surface hover:bg-surface-container transition-colors"
+              title={theme === 'dark' ? '切换到浅色' : theme === 'light' ? '切换到跟随系统' : '切换到深色'}
+            >
+              <span className="material-symbols-outlined text-[16px]">
+                {theme === 'dark' ? 'light_mode' : theme === 'light' ? 'computer' : 'dark_mode'}
+              </span>
+            </button>
+          </div>
+        )}
+
+        {/* Collapse button */}
         <button
           onClick={() => setCollapsed(!collapsed)}
           className="w-full py-2 rounded-lg text-mute hover:text-on-surface hover:bg-surface-container/50 transition-colors"

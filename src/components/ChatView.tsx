@@ -63,6 +63,67 @@ function MoreActionsMenu({ onClose, onAction }: { onClose: () => void; onAction:
   )
 }
 
+// ---- Intent Form Modal ----
+
+function IntentFormModal({ message, fields, onSubmit, onClose }: {
+  message: string
+  fields: { name: string; label: string; type: string; options?: string[]; placeholder?: string }[]
+  onSubmit: (data: Record<string, string>) => void
+  onClose: () => void
+}) {
+  const [formData, setFormData] = useState<Record<string, string>>({})
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+      <div
+        className="bg-surface-low border border-outline-variant rounded-2xl shadow-2xl w-[400px] max-w-[90vw] animate-msg-enter"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="px-5 pt-5 pb-3">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="material-symbols-outlined text-[18px] text-primary">info</span>
+            <span className="text-sm font-medium text-on-surface">需要补充信息</span>
+          </div>
+          <p className="text-xs text-on-surface-variant">{message}</p>
+        </div>
+        <div className="px-5 pb-4 space-y-3">
+          {fields.map(f => (
+            <div key={f.name}>
+              <label className="block text-[11px] text-mute mb-1">{f.label}</label>
+              {f.type === 'select' && f.options ? (
+                <select
+                  value={formData[f.name] || ''}
+                  onChange={e => setFormData(prev => ({ ...prev, [f.name]: e.target.value }))}
+                  className="w-full bg-surface-container border border-outline-variant/50 rounded-lg px-3 py-2 text-xs text-on-surface outline-none focus:ring-1 focus:ring-primary/50"
+                >
+                  <option value="">{f.placeholder || '请选择...'}</option>
+                  {f.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                </select>
+              ) : (
+                <input
+                  value={formData[f.name] || ''}
+                  onChange={e => setFormData(prev => ({ ...prev, [f.name]: e.target.value }))}
+                  placeholder={f.placeholder}
+                  className="w-full bg-surface-container border border-outline-variant/50 rounded-lg px-3 py-2 text-xs text-on-surface placeholder:text-mute outline-none focus:ring-1 focus:ring-primary/50"
+                  onKeyDown={e => { if (e.key === 'Enter') onSubmit(formData) }}
+                />
+              )}
+            </div>
+          ))}
+        </div>
+        <div className="px-5 pb-5 flex gap-2">
+          <button onClick={onClose} className="flex-1 py-2 bg-surface-container border border-outline-variant text-on-surface text-xs rounded-lg hover:bg-surface-high transition-colors">
+            取消
+          </button>
+          <button onClick={() => onSubmit(formData)} className="flex-1 py-2 bg-primary/15 text-primary text-xs rounded-lg hover:bg-primary/25 transition-colors font-medium">
+            确认
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ---- Main Component ----
 
 export default function ChatView({ pendingTopic, onTopicConsumed, initialConversationId, onConversationOpened, onNavigate, onConversationChange }: Props) {
@@ -79,6 +140,10 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
   const [feedbackTarget, setFeedbackTarget] = useState<string | null>(null)
   const [canvasOpen, setCanvasOpen] = useState(false)
   const [canvasData, setCanvasData] = useState<MaterialData | null>(null)
+  const [agentFormRequest, setAgentFormRequest] = useState<{
+    message: string
+    fields: { name: string; label: string; type: string; options?: string[]; placeholder?: string }[]
+  } | null>(null)
   const toolDataRef = useRef<{ analysis?: Record<string, unknown>; result?: Record<string, unknown> }>({})
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -181,6 +246,10 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
             analyze_script: '分析脚本结构...',
             expand_script: '生成各平台物料...',
             save_result: '保存到数据库...',
+            crawl_data: '正在爬取数据...',
+            query_data: '正在查询数据...',
+            request_user_input: '等待用户输入...',
+            suggest_topics: '生成选题建议...',
           }
           setStatus(labels[event.name] || `处理中...`)
         } else if (event.type === 'tool_result') {
@@ -197,6 +266,12 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
             return prev
           })
           setStatus('')
+        } else if (event.type === 'form_request') {
+          setAgentFormRequest({
+            message: event.message,
+            fields: event.fields,
+          })
+          setStatus('请在弹出的表单中填写信息...')
         } else if (event.type === 'done') {
           setIsStreaming(false)
           setStatus('')
@@ -282,6 +357,28 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
       setIsStreaming(false)
       setStatus('')
     }
+  }
+
+  const handleAgentFormSubmit = async (data: Record<string, string>) => {
+    const api = window.electronAPI
+    if (!api) return
+
+    await api.submitAgentForm(data)
+
+    const summary = Object.values(data).filter(Boolean).join('、')
+    setMessages(prev => {
+      const last = prev[prev.length - 1]
+      if (last && last.id === assistantIdRef.current) {
+        return [...prev.slice(0, -1), {
+          ...last,
+          content: last.content + `\n\n📝 用户提供了：${summary}`,
+        }]
+      }
+      return prev
+    })
+
+    setAgentFormRequest(null)
+    setStatus('正在处理...')
   }
 
   // 流式结束后保存助手回复
@@ -721,6 +818,16 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
               </button>
             </div>
           </div>
+        )}
+
+        {/* Agent Form Request Modal */}
+        {agentFormRequest && (
+          <IntentFormModal
+            message={agentFormRequest.message}
+            fields={agentFormRequest.fields}
+            onSubmit={handleAgentFormSubmit}
+            onClose={() => setAgentFormRequest(null)}
+          />
         )}
       </div>
     </div>

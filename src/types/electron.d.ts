@@ -177,6 +177,7 @@ export interface ElectronAPI {
   // Agent
   runAgent: (script: string, platforms: string[]) => Promise<void>
   stopAgent: () => Promise<boolean>
+  submitAgentForm: (data: Record<string, string>) => Promise<boolean>
   onAgentEvent: (callback: (event: string) => void) => () => void
   // 会话
   convList?: () => Promise<Conversation[]>

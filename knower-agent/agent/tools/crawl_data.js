@@ -1,0 +1,64 @@
+const { runCrawler } = require('../../lib/crawler')
+
+module.exports = {
+  name: 'crawl_data',
+  description: '爬取指定平台的公开数据。支持按关键词搜索或爬取创作者主页。',
+  input_schema: {
+    type: 'object',
+    properties: {
+      platform: {
+        type: 'string',
+        enum: ['bili', 'dy', 'xhs', 'wb'],
+        description: '平台：bili=B站, dy=抖音, xhs=小红书, wb=微博',
+      },
+      keyword: {
+        type: 'string',
+        description: '搜索关键词（关键词搜索模式时使用）',
+      },
+      creatorUid: {
+        type: 'string',
+        description: '创作者 UID（创作者主页模式时使用）',
+      },
+      maxNotes: {
+        type: 'number',
+        description: '最大爬取数量，默认 15',
+      },
+    },
+    required: ['platform'],
+  },
+  async execute({ platform, keyword, creatorUid, maxNotes }) {
+    const options = { maxNotes: maxNotes || 15 }
+
+    if (creatorUid) {
+      options.crawlerType = 'creator'
+      options.creatorId = creatorUid
+    } else if (keyword) {
+      options.crawlerType = 'search'
+    } else {
+      return { error: '请提供 keyword 或 creatorUid' }
+    }
+
+    try {
+      const result = await runCrawler(platform, keyword || '', options)
+      return {
+        success: true,
+        platform,
+        totalCount: result.stats?.total_contents || 0,
+        creators: (result.creators || []).map(c => ({
+          nickname: c.nickname,
+          userId: c.user_id,
+          fans: c.total_fans,
+        })),
+        topContents: (result.contents || []).slice(0, 10).map(c => ({
+          title: c.title,
+          playCount: c.video_play_count || c.play_count || 0,
+          likeCount: c.liked_count || 0,
+          commentCount: c.video_comment || c.comment_count || 0,
+        })),
+        message: `成功爬取 ${result.stats?.total_contents || 0} 条数据`,
+      }
+    } catch (err) {
+      return { success: false, error: err.message }
+    }
+  },
+}

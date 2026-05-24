@@ -110,6 +110,7 @@ ipcMain.handle('set-store', (_event, key: string, value: unknown) => {
 // ============================================================
 
 let currentAbortController: AbortController | null = null
+let currentAgent: InstanceType<typeof Agent> | null = null
 
 ipcMain.handle('agent-run', async (event, script: string, platforms: string[]) => {
   const settings = readSettings()
@@ -119,6 +120,7 @@ ipcMain.handle('agent-run', async (event, script: string, platforms: string[]) =
     baseUrl: (settings.baseUrl as string) || '',
     provider: (settings.apiProvider as string) || 'claude',
   })
+  currentAgent = agent
 
   const prompt = `请帮我分析以下脚本，并为 ${platforms.join('、')} 三个平台生成发布物料：\n\n${script}`
 
@@ -160,7 +162,16 @@ ipcMain.handle('agent-run', async (event, script: string, platforms: string[]) =
     }
   } finally {
     currentAbortController = null
+    currentAgent = null
   }
+})
+
+ipcMain.handle('agent-submit-form', async (_event, data: Record<string, string>) => {
+  if (currentAgent?._resolveForm) {
+    currentAgent._resolveForm(data)
+    return true
+  }
+  return false
 })
 
 ipcMain.handle('agent-stop', () => {
