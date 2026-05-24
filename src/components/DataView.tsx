@@ -683,7 +683,7 @@ export default function DataView() {
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      {/* 顶部操作栏 */}
+      {/* 顶部操作栏 - 第一行：标题 + 模式切换 */}
       <div className="px-6 py-3 border-b border-outline-variant shrink-0 flex items-center gap-3">
         <h1 className="text-lg font-medium text-on-surface mr-2">数据分析</h1>
 
@@ -706,6 +706,10 @@ export default function DataView() {
             <span className="material-symbols-outlined text-[12px] align-[-2px] mr-1">person</span>用户主页
           </button>
         </div>
+      </div>
+
+      {/* 顶部操作栏 - 第二行：平台选择 + 输入 + 操作按钮 */}
+      <div className="px-6 py-2 border-b border-outline-variant shrink-0 flex items-center gap-3">
 
         {/* 输入区 */}
         <select

@@ -40,10 +40,18 @@ function initTables() {
     CREATE TABLE IF NOT EXISTS conversations (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       title TEXT NOT NULL DEFAULT '新对话',
+      is_pinned INTEGER DEFAULT 0,
       created_at DATETIME DEFAULT (datetime('now','localtime')),
       updated_at DATETIME DEFAULT (datetime('now','localtime'))
     )
   `)
+  // 迁移：如果旧表没有 is_pinned 列，添加
+  try {
+    db.exec('SELECT is_pinned FROM conversations LIMIT 1')
+  } catch {
+    db.exec('ALTER TABLE conversations ADD COLUMN is_pinned INTEGER DEFAULT 0')
+    saveDb()
+  }
   db.run(`
     CREATE TABLE IF NOT EXISTS messages (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -202,8 +210,59 @@ function initTables() {
       created_at DATETIME DEFAULT (datetime('now','localtime'))
     )
   `)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS video_analyses (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      platform TEXT NOT NULL,
+      source_uid TEXT NOT NULL DEFAULT '',
+      analysis_json TEXT NOT NULL,
+      video_count INTEGER NOT NULL DEFAULT 0,
+      overview_json TEXT,
+      created_at DATETIME DEFAULT (datetime('now','localtime')),
+      UNIQUE(platform, source_uid)
+    )
+  `)
   // 修复分类脏数据：将 datetime 格式的 category 值重置为"未分类"
   db.run("UPDATE crawl_content SET category = '未分类' WHERE category LIKE '____-__-__%'")
+
+  // 修复 UID 格式的 source_name：用 creators 表的真实名称更新
+  try {
+    const uidNames = db.exec(`
+      SELECT c.uid, c.name FROM creators c
+      WHERE c.uid IN (
+        SELECT DISTINCT source_uid FROM crawl_content
+        WHERE source_uid != '' AND source_uid = source_name AND source_uid GLOB '[0-9]*'
+      )
+    `)
+    if (uidNames.length) {
+      for (const row of uidNames[0].values) {
+        db.run('UPDATE crawl_content SET source_name = ? WHERE source_uid = ? AND source_name = source_uid', [row[1], row[0]])
+      }
+      saveDb()
+    }
+  } catch { /* ignore */ }
+
+  // 修复头像：从 crawl_content.raw_json 回补 creators.avatar_url
+  try {
+    const needAvatar = db.exec(`
+      SELECT uid FROM creators WHERE avatar_url = '' OR avatar_url IS NULL
+    `)
+    if (needAvatar.length) {
+      for (const row of needAvatar[0].values) {
+        const rawRes = db.exec('SELECT raw_json FROM crawl_content WHERE source_uid = ? LIMIT 1', [row[0]])
+        if (rawRes.length && rawRes[0].values.length) {
+          try {
+            const raw = JSON.parse(rawRes[0].values[0][0] || '{}')
+            const avatar = raw.face || raw.author?.face || raw.pic || ''
+            if (avatar) {
+              db.run('UPDATE creators SET avatar_url = ? WHERE uid = ?', [avatar, row[0]])
+            }
+          } catch { /* ignore */ }
+        }
+      }
+      saveDb()
+    }
+  } catch { /* ignore */ }
 }
 
 async function saveScript(content, analysis, result) {
@@ -269,6 +328,15 @@ async function deleteConversation(id) {
   saveDb()
 }
 
+async function togglePinConversation(id) {
+  const db = await getDb()
+  db.run(
+    'UPDATE conversations SET is_pinned = CASE WHEN is_pinned = 1 THEN 0 ELSE 1 END WHERE id = ?',
+    [id]
+  )
+  saveDb()
+}
+
 async function deleteMessage(id) {
   const db = await getDb()
   db.run('DELETE FROM messages WHERE id = ?', [id])
@@ -280,15 +348,16 @@ async function deleteMessage(id) {
 async function listConversations(limit = 50) {
   const db = await getDb()
   const res = db.exec(
-    'SELECT id, title, created_at, updated_at FROM conversations ORDER BY updated_at DESC LIMIT ?',
+    'SELECT id, title, is_pinned, created_at, updated_at FROM conversations ORDER BY is_pinned DESC, updated_at DESC LIMIT ?',
     [limit]
   )
   if (!res.length) return []
   return res[0].values.map((row) => ({
     id: row[0],
     title: row[1],
-    createdAt: row[2],
-    updatedAt: row[3],
+    isPinned: row[2] || 0,
+    createdAt: row[3],
+    updatedAt: row[4],
   }))
 }
 
@@ -493,7 +562,7 @@ async function saveCrawlCreatorsBatch(taskId, platform, creators) {
         platform,
         c.user_id || '',
         c.nickname || '',
-        c.avatar || '',
+        c.avatar || c.face || c.avatar_url || '',
         parseInt(c.total_fans) || 0,
         parseInt(c.total_liked) || 0,
         parseInt(c.total_play) || 0,
@@ -893,9 +962,127 @@ async function getRecentTrends(platform, days = 7) {
   }))
 }
 
+// --- AI 分析缓存 ---
+
+async function saveVideoAnalysis(platform, sourceUid, analysis, videoCount, overview) {
+  const db = await getDb()
+  db.run(
+    `INSERT OR REPLACE INTO video_analyses (platform, source_uid, analysis_json, video_count, overview_json)
+     VALUES (?, ?, ?, ?, ?)`,
+    [platform, sourceUid || '', JSON.stringify(analysis), videoCount, overview ? JSON.stringify(overview) : null]
+  )
+  saveDb()
+}
+
+async function getVideoAnalysis(platform, sourceUid) {
+  const db = await getDb()
+  const res = db.exec(
+    'SELECT analysis_json, video_count, overview_json, created_at FROM video_analyses WHERE platform = ? AND source_uid = ?',
+    [platform, sourceUid || '']
+  )
+  if (!res.length || !res[0].values.length) return null
+  const row = res[0].values[0]
+  return {
+    analysis: JSON.parse(row[0]),
+    videoCount: row[1],
+    overview: row[2] ? JSON.parse(row[2]) : null,
+    createdAt: row[3],
+  }
+}
+
+async function deleteVideoAnalysis(platform, sourceUid) {
+  const db = await getDb()
+  db.run('DELETE FROM video_analyses WHERE platform = ? AND source_uid = ?', [platform, sourceUid || ''])
+  saveDb()
+}
+
+// --- 竞品分析 ---
+
+async function getSourceDetail(sourceUid, platform) {
+  const db = await getDb()
+  let query = `SELECT title, "desc", like_count, comment_count, play_count, share_count,
+               created_at, category, raw_json, source_name
+       FROM crawl_content WHERE source_uid = ?`
+  const params = [sourceUid]
+  if (platform) {
+    query += ' AND platform = ?'
+    params.push(platform)
+  }
+  query += ' ORDER BY play_count DESC LIMIT 30'
+  const res = db.exec(query, params)
+  if (!res.length) return []
+  return res[0].values.map((row) => {
+    let raw = {}
+    try { raw = JSON.parse(row[8] || '{}') } catch { /* ignore */ }
+    return {
+      title: row[0],
+      desc: row[1],
+      likeCount: row[2],
+      commentCount: row[3],
+      playCount: row[4],
+      shareCount: row[5],
+      createdAt: row[6],
+      category: row[7],
+      coinCount: parseInt(raw.video_coin_count) || 0,
+      favoriteCount: parseInt(raw.video_favorite_count) || 0,
+      sourceName: row[9] || '',
+    }
+  })
+}
+
+// 查询关键词来源的详细数据（按 keyword 前缀匹配）
+async function getKeywordDetail(keyword, platform) {
+  const db = await getDb()
+  const sourceUid = 'keyword_' + keyword
+  let query = `SELECT title, "desc", like_count, comment_count, play_count, share_count,
+               created_at, category, raw_json, author_name
+       FROM crawl_content WHERE source_uid = ?`
+  const params = [sourceUid]
+  if (platform) {
+    query += ' AND platform = ?'
+    params.push(platform)
+  }
+  query += ' ORDER BY play_count DESC LIMIT 30'
+  const res = db.exec(query, params)
+  if (!res.length) return []
+  return res[0].values.map((row) => {
+    let raw = {}
+    try { raw = JSON.parse(row[8] || '{}') } catch { /* ignore */ }
+    return {
+      title: row[0],
+      desc: row[1],
+      likeCount: row[2],
+      commentCount: row[3],
+      playCount: row[4],
+      shareCount: row[5],
+      createdAt: row[6],
+      category: row[7],
+      coinCount: parseInt(raw.video_coin_count) || 0,
+      favoriteCount: parseInt(raw.video_favorite_count) || 0,
+      authorName: row[9] || '',
+    }
+  })
+}
+
+// --- 页面数据互通 ---
+
+async function getRecentCrawlSummary() {
+  const db = await getDb()
+  const res = db.exec(`
+    SELECT source_name, platform, COUNT(*) as cnt, SUM(play_count) as total_play, SUM(like_count) as total_like
+    FROM crawl_content WHERE source_uid != '' AND source_uid IS NOT NULL
+    GROUP BY source_uid, platform ORDER BY total_play DESC LIMIT 10
+  `)
+  if (!res.length) return ''
+  return res[0].values.map(row => {
+    const platform = row[1] === 'bili' ? 'B站' : row[1] === 'dy' ? '抖音' : row[1] === 'xhs' ? '小红书' : row[1]
+    return `- ${row[0] || '未知'}（${platform}）：${row[2]} 个视频，播放 ${row[3]?.toLocaleString() || 0}`
+  }).join('\n')
+}
+
 module.exports = {
   getDb, saveScript, getScript, listScripts,
-  createConversation, updateConversationTitle, deleteConversation,
+  createConversation, updateConversationTitle, deleteConversation, togglePinConversation,
   listConversations, addMessage, getMessages, deleteMessage,
   upsertMemory, getMemories,
   saveCrawlTask, updateCrawlTaskStatus, saveCrawlContentBatch, getCrawlTasks, getCrawlContent,
@@ -904,4 +1091,6 @@ module.exports = {
   getSourceList, getVideosBySource,
   categorizeVideo, categorizeVideoBatch, getAllCategories, getUncategorizedCount,
   saveTopic, getSavedTopics, deleteSavedTopic, getTopContent, getRecentTrends,
+  saveVideoAnalysis, getVideoAnalysis, deleteVideoAnalysis, getRecentCrawlSummary,
+  getSourceDetail, getKeywordDetail,
 }

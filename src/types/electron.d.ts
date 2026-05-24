@@ -1,8 +1,18 @@
 export interface Conversation {
   id: number
   title: string
+  isPinned?: number
   createdAt: string
   updatedAt: string
+}
+
+export interface ToolCallInfo {
+  name: string
+  input: Record<string, unknown>
+  status: 'running' | 'success' | 'error'
+  result?: string
+  startTime: number
+  endTime?: number
 }
 
 export interface Message {
@@ -10,6 +20,7 @@ export interface Message {
   role: 'user' | 'assistant'
   content: string
   createdAt?: string
+  toolCalls?: ToolCallInfo[]
   toolAnalysis?: Record<string, unknown>
   toolResult?: Record<string, unknown>
 }
@@ -108,6 +119,21 @@ export interface SourceInfo {
   isPinned: number
 }
 
+export interface SourceDetailItem {
+  title: string
+  desc: string
+  likeCount: number
+  commentCount: number
+  playCount: number
+  shareCount: number
+  createdAt: string
+  category: string
+  coinCount: number
+  favoriteCount: number
+  sourceName?: string
+  authorName?: string
+}
+
 export interface CreatorInfo {
   uid: string
   name: string
@@ -153,10 +179,12 @@ export interface ElectronAPI {
   stopAgent: () => Promise<boolean>
   onAgentEvent: (callback: (event: string) => void) => () => void
   // 会话
+  convList?: () => Promise<Conversation[]>
   listConversations: () => Promise<Conversation[]>
   createConversation: (title: string) => Promise<number>
   deleteConversation: (id: number) => Promise<boolean>
   renameConversation: (id: number, title: string) => Promise<boolean>
+  togglePinConversation: (id: number) => Promise<boolean>
   getMessages: (conversationId: number) => Promise<Message[]>
   addMessage: (conversationId: number, role: string, content: string) => Promise<boolean>
   // 爬虫
@@ -167,6 +195,8 @@ export interface ElectronAPI {
   getCrawlCreators: (taskId: number) => Promise<CrawlCreator[]>
   analyzeVideoData: (platform: string, sourceUid?: string) => Promise<VideoAnalysis | null>
   getAllCrawlContent: (platform?: string) => Promise<CrawlContent[]>
+  getSourceDetail: (sourceUid: string, platform?: string) => Promise<SourceDetailItem[]>
+  getKeywordDetail: (keyword: string, platform?: string) => Promise<SourceDetailItem[]>
   // 来源
   getSources: (platform: string) => Promise<SourceInfo[]>
   getVideosBySource: (platform: string, sourceUid: string) => Promise<CrawlContent[]>

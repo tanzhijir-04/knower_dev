@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   createConversation: (title: string) => ipcRenderer.invoke('conv-create', title),
   deleteConversation: (id: number) => ipcRenderer.invoke('conv-delete', id),
   renameConversation: (id: number, title: string) => ipcRenderer.invoke('conv-rename', id, title),
+  togglePinConversation: (id: number) => ipcRenderer.invoke('conv-toggle-pin', id),
   getMessages: (conversationId: number) => ipcRenderer.invoke('conv-messages', conversationId),
   addMessage: (conversationId: number, role: string, content: string) =>
     ipcRenderer.invoke('msg-add', conversationId, role, content),
@@ -35,6 +36,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getCrawlCreators: (taskId: number) => ipcRenderer.invoke('crawler-creators', taskId),
   analyzeVideoData: (platform: string, sourceUid?: string) => ipcRenderer.invoke('analyze-video-data', platform, sourceUid),
   getAllCrawlContent: (platform?: string) => ipcRenderer.invoke('get-all-crawl-content', platform),
+  getSourceDetail: (sourceUid: string, platform?: string) => ipcRenderer.invoke('source-detail', sourceUid, platform),
+  getKeywordDetail: (keyword: string, platform?: string) => ipcRenderer.invoke('keyword-detail', keyword, platform),
   // 来源
   getSources: (platform: string) => ipcRenderer.invoke('get-sources', platform),
   getVideosBySource: (platform: string, sourceUid: string) => ipcRenderer.invoke('get-videos-by-source', platform, sourceUid),

@@ -2,6 +2,48 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ========== 动画定义 ========== */
+
+@keyframes msg-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes tool-enter {
+  from { opacity: 0; transform: translateX(-12px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulse-green {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(-12px) scale(0.95); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes toast-out {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(-12px) scale(0.95); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
 @layer base {
   * {
     box-sizing: border-box;
@@ -10,11 +52,12 @@
   }
 
   body {
-    font-family: 'JetBrains Mono', system-ui, sans-serif;
+    font-family: 'Inter', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     background: #0e150f;
     color: #dde5da;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
     overflow: hidden;
   }
 
@@ -151,4 +194,112 @@
     margin-bottom: 0.6em;
     opacity: 0.8;
   }
+
+  /* Code block font override */
+  code, pre, .font-mono, .prose code, .prose pre {
+    font-family: 'JetBrains Mono', 'Cascadia Code', 'Consolas', monospace !important;
+  }
+
+  /* Tool call card */
+  .tool-card {
+    @apply border border-outline-variant/30 rounded-xl overflow-hidden bg-surface-low;
+  }
+  .tool-card-header {
+    @apply flex items-center gap-2.5 px-4 py-2.5 cursor-pointer hover:bg-surface-container/50 transition-colors;
+  }
+  .tool-card-header .tool-icon.running {
+    @apply bg-primary/20 text-primary;
+  }
+  .tool-card-header .tool-icon.success {
+    @apply bg-green-500/20 text-green-400;
+  }
+  .tool-card-header .tool-icon.error {
+    @apply bg-red-500/20 text-red-400;
+  }
+  .tool-card-body {
+    @apply px-4 pb-3 border-t border-outline-variant/20;
+  }
+
+  /* Material panel */
+  .material-panel {
+    @apply border border-outline-variant/30 rounded-xl overflow-hidden bg-surface-low;
+  }
+  .material-tab {
+    @apply px-3.5 py-2.5 text-xs font-medium text-on-surface-variant border-b-2 border-transparent hover:text-on-surface transition-colors;
+  }
+  .material-tab.active {
+    @apply text-primary border-primary;
+  }
+  .material-field-label {
+    @apply text-[11px] text-mute uppercase tracking-wider mb-1.5;
+  }
+  .material-field-value {
+    @apply bg-surface-container rounded-lg px-3.5 py-2.5 text-sm text-on-surface leading-relaxed whitespace-pre-wrap;
+  }
+
+  /* Message action bar */
+  .msg-actions {
+    @apply flex items-center gap-1 mt-1.5 opacity-0 group-hover:opacity-100 transition-opacity;
+  }
+  .msg-action-btn {
+    @apply p-1.5 rounded-md text-mute hover:text-on-surface hover:bg-surface-container transition-colors;
+  }
+
+  /* ========== 动画工具类 ========== */
+
+  .animate-msg-enter {
+    animation: msg-enter 0.2s ease-out forwards;
+  }
+
+  .animate-tool-enter {
+    animation: tool-enter 0.25s ease-out forwards;
+  }
+
+  .typing-cursor::after {
+    content: '█';
+    color: var(--color-primary);
+    animation: blink 0.8s step-end infinite;
+    margin-left: 1px;
+    font-size: 0.9em;
+  }
+
+  .animate-spin {
+    animation: spin 1s linear infinite;
+  }
+
+  .animate-pulse-green {
+    animation: pulse-green 1.5s ease-in-out infinite;
+  }
+
+  .animate-toast-in {
+    animation: toast-in 0.2s ease-out forwards;
+  }
+
+  .animate-toast-out {
+    animation: toast-out 0.2s ease-in forwards;
+  }
+
+  /* 骨架屏 */
+  .skeleton {
+    background: linear-gradient(90deg, var(--color-surface-container) 25%, var(--color-surface-high) 50%, var(--color-surface-container) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: 6px;
+  }
+
+  /* 页面切换淡入 */
+  .animate-page-enter {
+    animation: msg-enter 0.2s ease-out forwards;
+  }
+}
+
+/* 按钮交互状态 */
+button:active:not(:disabled) {
+  transform: scale(0.96);
+  transition: transform 0.1s ease-out;
+}
+
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }

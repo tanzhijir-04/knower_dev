@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useToast } from '../contexts/ToastContext'
 
 interface PlatformMaterial {
   title?: string
@@ -9,7 +10,7 @@ interface PlatformMaterial {
   body?: string
 }
 
-interface MaterialData {
+export interface MaterialData {
   analysis?: {
     videoType?: string
     topic?: string
@@ -29,6 +30,7 @@ interface MaterialData {
 
 interface Props {
   data: MaterialData
+  onOpenCanvas?: () => void
 }
 
 const PLATFORMS = [
@@ -42,10 +44,12 @@ const PLATFORMS = [
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false)
+  const { showToast } = useToast()
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(text)
     setCopied(true)
+    showToast('已复制到剪贴板', 'success')
     setTimeout(() => setCopied(false), 2000)
   }
 
@@ -219,7 +223,7 @@ function SubtitlesTab({ srt }: { srt: string }) {
   )
 }
 
-export default function MaterialCards({ data }: Props) {
+export default function MaterialCards({ data, onOpenCanvas }: Props) {
   const [activeTab, setActiveTab] = useState<string>('bilibili')
 
   if (!data.result && !data.analysis) return null
@@ -245,10 +249,20 @@ export default function MaterialCards({ data }: Props) {
             {p.label}
           </button>
         ))}
+        {onOpenCanvas && (
+          <button
+            onClick={onOpenCanvas}
+            className="ml-auto flex items-center gap-1 px-2.5 py-1.5 text-xs text-mute hover:text-on-surface hover:bg-surface-container rounded-lg transition-colors shrink-0"
+            title="在面板查看"
+          >
+            <span className="material-symbols-outlined text-[14px]">dashboard</span>
+            <span className="hidden sm:inline">面板</span>
+          </button>
+        )}
       </div>
 
       {/* Tab 内容 */}
-      <div className="p-4">
+      <div key={activeTab} className="p-4 animate-msg-enter">
         {activeTab === 'bilibili' && data.result?.bilibili && (
           <PlatformTab platform={PLATFORMS[0]} material={data.result.bilibili} />
         )}

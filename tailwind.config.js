@@ -25,9 +25,19 @@ export default {
         mute: '#525252',
       },
       fontFamily: {
-        sans: ['JetBrains Mono', 'system-ui', 'sans-serif'],
-        display: ['Source Serif 4', 'serif'],
-        mono: ['JetBrains Mono', 'monospace'],
+        sans: [
+          'Inter',
+          'Noto Sans SC',
+          '-apple-system',
+          'BlinkMacSystemFont',
+          'Segoe UI',
+          'Roboto',
+          'Helvetica Neue',
+          'Arial',
+          'sans-serif',
+        ],
+        display: ['Source Serif 4', 'Georgia', 'serif'],
+        mono: ['JetBrains Mono', 'Cascadia Code', 'Fira Code', 'Consolas', 'monospace'],
       },
       spacing: {
         sidebar: '56px',

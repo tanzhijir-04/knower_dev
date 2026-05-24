@@ -122,11 +122,32 @@ ipcMain.handle('agent-run', async (event, script: string, platforms: string[]) =
 
   const prompt = `请帮我分析以下脚本，并为 ${platforms.join('、')} 三个平台生成发布物料：\n\n${script}`
 
+  // 注入用户爬取数据摘要
+  const dataSummary = await db.getRecentCrawlSummary()
+  let fullPrompt = dataSummary
+    ? `## 你的账号数据摘要\n${dataSummary}\n\n## 任务\n${prompt}\n\n请参考上面的数据来优化建议。`
+    : prompt
+
+  // 自动检测 UID，注入创作者历史数据（竞品分析）
+  const uidMatch = fullPrompt.match(/\b(\d{6,12})\b/)
+  if (uidMatch) {
+    const uid = uidMatch[1]
+    try {
+      const detail = await db.getSourceDetail(uid)
+      if (detail.length > 0) {
+        const dataStr = detail.map((v: { title: string; playCount: number; likeCount: number; commentCount: number }, i: number) =>
+          `${i + 1}. "${v.title}" | 播放:${v.playCount} | 点赞:${v.likeCount} | 评论:${v.commentCount}`
+        ).join('\n')
+        fullPrompt = `## 该创作者的历史数据（共 ${detail.length} 条）\n${dataStr}\n\n## 任务\n${fullPrompt}`
+      }
+    } catch { /* ignore — UID may not exist */ }
+  }
+
   const abortController = new AbortController()
   currentAbortController = abortController
 
   try {
-    for await (const evt of agent.stream(prompt, { platforms, signal: abortController.signal })) {
+    for await (const evt of agent.stream(fullPrompt, { platforms, signal: abortController.signal })) {
       event.sender.send('agent-event', JSON.stringify(evt))
     }
     event.sender.send('agent-event', JSON.stringify({ type: 'done' }))
@@ -189,6 +210,11 @@ ipcMain.handle('conv-rename', async (_event, id: number, title: string) => {
   return true
 })
 
+ipcMain.handle('conv-toggle-pin', async (_event, id: number) => {
+  await db.togglePinConversation(id)
+  return true
+})
+
 // ============================================================
 //  爬虫
 // ============================================================
@@ -215,14 +241,27 @@ ipcMain.handle('crawler-run', async (event, platform: string, keywords: string, 
       sourceName = keywords
     }
 
+    // 从 creators 结果中提取真实昵称和头像
+    if (result.creators && result.creators.length > 0) {
+      const creator = result.creators[0]
+      sourceName = creator.nickname || creator.name || sourceUid || sourceName
+    }
+
+    // 爬取完成后清除旧的分析缓存
+    if (sourceUid) {
+      await db.deleteVideoAnalysis(platform, sourceUid)
+    }
+
     if (result.contents && result.contents.length > 0) {
       await db.saveCrawlContentBatch(taskId, platform, result.contents, sourceUid, sourceName)
     }
     // 如果是创作者爬取，保存创作者记录
     if (options.crawlerType === 'creator' && sourceUid) {
-      // 尝试从爬取结果中获取创作者昵称
-      const creatorName = result.creators?.[0]?.nickname || sourceName || sourceUid
-      const creatorAvatar = result.creators?.[0]?.avatar || ''
+      const creatorName = result.creators?.[0]?.nickname || result.creators?.[0]?.name || sourceName || sourceUid
+      const creatorAvatar = result.creators?.[0]?.avatar
+        || result.creators?.[0]?.face
+        || result.creators?.[0]?.avatar_url
+        || ''
       await db.saveCreator(sourceUid, creatorName, creatorAvatar)
     }
     if (result.creators && result.creators.length > 0) {
@@ -259,6 +298,14 @@ ipcMain.handle('get-videos-by-source', async (_event, platform: string, sourceUi
 
 ipcMain.handle('get-all-crawl-content', async (_event, platform?: string) => {
   return await db.getAllCrawlContent(platform || null)
+})
+
+ipcMain.handle('source-detail', async (_event, sourceUid: string, platform?: string) => {
+  return await db.getSourceDetail(sourceUid, platform || null)
+})
+
+ipcMain.handle('keyword-detail', async (_event, keyword: string, platform?: string) => {
+  return await db.getKeywordDetail(keyword, platform || null)
 })
 
 // ============================================================
@@ -332,6 +379,20 @@ ipcMain.handle('export-source-data', async (_event, sourceUid: string) => {
 
 ipcMain.handle('analyze-video-data', async (_event, platform: string, sourceUid?: string) => {
   const settings = readSettings()
+
+  // 1. 先查数据库缓存
+  const cached = await db.getVideoAnalysis(platform || 'bili', sourceUid || '')
+  if (cached) {
+    const videos = sourceUid
+      ? await db.getVideosBySource(platform || 'bili', sourceUid)
+      : await db.getAllCrawlContent(platform || 'bili')
+    if (videos.length === cached.videoCount) {
+      return { ...cached.analysis, overview: cached.overview }
+    }
+    // 数据数量变化，清除旧缓存
+    await db.deleteVideoAnalysis(platform || 'bili', sourceUid || '')
+  }
+
   const videos = sourceUid
     ? await db.getVideosBySource(platform || 'bili', sourceUid)
     : await db.getAllCrawlContent(platform || 'bili')
@@ -425,15 +486,17 @@ ${videoDataStr}
     analysis = {}
   }
 
-  return {
-    overview: {
-      totalVideos: enriched.length,
-      totalPlay,
-      totalLike,
-      totalComment,
-      avgPlay,
-      avgLike,
-    },
+  const overview = {
+    totalVideos: enriched.length,
+    totalPlay,
+    totalLike,
+    totalComment,
+    avgPlay,
+    avgLike,
+  }
+
+  const result = {
+    overview,
     topByEngagement: withEngagement.slice(0, 20).map((v: { title: string; playCount: number; engagementRate: number }) => ({
       title: v.title,
       playCount: v.playCount,
@@ -441,6 +504,11 @@ ${videoDataStr}
     })),
     ...analysis,
   }
+
+  // 3. 存入数据库缓存
+  await db.saveVideoAnalysis(platform || 'bili', sourceUid || '', result, enriched.length, overview)
+
+  return result
 })
 
 // ============================================================
