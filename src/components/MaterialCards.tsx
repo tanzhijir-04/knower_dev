@@ -23,6 +23,7 @@ interface MaterialData {
     douyin?: PlatformMaterial
     xiaohongshu?: PlatformMaterial
     youtube?: PlatformMaterial
+    subtitles?: string
   }
 }
 
@@ -36,6 +37,7 @@ const PLATFORMS = [
   { key: 'douyin', label: '抖音', icon: 'music_note', color: '#fe2c55' },
   { key: 'xiaohongshu', label: '小红书', icon: 'style', color: '#ff2442' },
   { key: 'checklist', label: '拍摄清单', icon: 'checklist', color: '#6bfb9a' },
+  { key: 'subtitles', label: '字幕稿', icon: 'subtitles', color: '#a78bfa' },
 ] as const
 
 function CopyButton({ text }: { text: string }) {
@@ -171,7 +173,7 @@ function PlatformTab({ platform, material }: { platform: typeof PLATFORMS[number
   )
 }
 
-function ChecklistTab({ checklist }: { checklist: MaterialData['result']['shootingChecklist'] }) {
+function ChecklistTab({ checklist }: { checklist: NonNullable<MaterialData['result']>['shootingChecklist'] }) {
   if (!checklist?.length) return <p className="text-sm text-mute">暂无拍摄清单</p>
 
   const fullText = checklist
@@ -200,6 +202,19 @@ function ChecklistTab({ checklist }: { checklist: MaterialData['result']['shooti
           </div>
         ))}
       </div>
+    </div>
+  )
+}
+
+function SubtitlesTab({ srt }: { srt: string }) {
+  return (
+    <div>
+      <div className="flex justify-end mb-2">
+        <CopyButton text={srt} />
+      </div>
+      <pre className="text-xs text-on-surface bg-surface-low rounded-lg px-3 py-2 overflow-x-auto whitespace-pre-wrap font-mono leading-relaxed max-h-64 overflow-y-auto">
+        {srt}
+      </pre>
     </div>
   )
 }
@@ -248,6 +263,9 @@ export default function MaterialCards({ data }: Props) {
         )}
         {activeTab === 'checklist' && (
           <ChecklistTab checklist={data.result?.shootingChecklist} />
+        )}
+        {activeTab === 'subtitles' && data.result?.subtitles && (
+          <SubtitlesTab srt={data.result.subtitles} />
         )}
       </div>
     </div>

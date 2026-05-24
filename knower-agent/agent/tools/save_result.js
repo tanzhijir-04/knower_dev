@@ -61,16 +61,12 @@ async function extractAndSaveMemories(script, analysis, result) {
     return
   }
 
-  const Anthropic = require('@anthropic-ai/sdk')
-  const opts = { apiKey: settings.apiKey }
-  if (settings.baseUrl) opts.baseURL = settings.baseUrl
-  const client = new Anthropic(opts)
+  const { createClient } = require('../../llm')
+  const client = createClient(settings)
 
   const dataSummary = JSON.stringify({ analysis, result }, null, 2)
 
-  const response = await client.messages.create({
-    model: settings.model,
-    max_tokens: 2048,
+  const response = await client.chat({
     system: '你是一个内容分析助手，专门从视频创作数据中提炼创作者的风格偏好。只返回 JSON 数组，不要有任何其他文字，不要有 markdown 代码块。',
     messages: [{
       role: 'user',
@@ -87,6 +83,7 @@ async function extractAndSaveMemories(script, analysis, result) {
 数据如下：
 ${dataSummary}`,
     }],
+    maxTokens: 2048,
   })
 
   const text = response.content

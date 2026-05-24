@@ -121,7 +121,7 @@ async def run_crawler(args):
     # Get and run crawler
     crawler_class = _get_crawler_class(args.platform)
     crawler = crawler_class()
-    print(f"[progress] 平台: {args.platform}, 关键词: {args.keywords}, 模式: {args.crawler_type}", flush=True)
+    print(f"[progress] 平台: {args.platform}, 关键词: {args.keywords}, 模式: {args.crawler_type}", file=sys.stderr, flush=True)
     try:
         await crawler.start()
     finally:

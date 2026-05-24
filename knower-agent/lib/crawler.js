@@ -96,7 +96,13 @@ function runCrawler(platform, keywords, options = {}, onProgress) {
 
     proc.on('close', (code) => {
       try {
-        const result = JSON.parse(stdout)
+        // Extract JSON object from stdout (may contain non-JSON progress lines)
+        let jsonStr = stdout.trim()
+        const jsonStart = jsonStr.indexOf('{')
+        if (jsonStart > 0) {
+          jsonStr = jsonStr.slice(jsonStart)
+        }
+        const result = JSON.parse(jsonStr)
         // If we got valid JSON with contents, the crawl succeeded even if exit code != 0
         // (Python may throw cleanup errors after data is collected)
         if (result.contents && result.contents.length > 0) {

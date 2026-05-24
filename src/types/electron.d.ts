@@ -10,6 +10,8 @@ export interface Message {
   role: 'user' | 'assistant'
   content: string
   createdAt?: string
+  toolAnalysis?: Record<string, unknown>
+  toolResult?: Record<string, unknown>
 }
 
 export interface CrawlTask {
@@ -36,10 +38,10 @@ export interface CrawlContent {
   shareCount: number
   playCount: number
   createdAt: string
-  fetchedAt: string
   category: string
   sourceUid: string
   sourceName: string
+  rawJson?: Record<string, string>
 }
 
 export interface CrawlerResult {
@@ -115,6 +117,32 @@ export interface CreatorInfo {
   lastFetchedAt: string
 }
 
+export interface TopicSuggestion {
+  title: string
+  reason: string
+  source: string
+  estimatedPerformance: string
+  tags: string[]
+  platforms?: string[]
+}
+
+export interface SavedTopic extends TopicSuggestion {
+  id: number
+  platform: string
+  fullData: Record<string, unknown>
+  createdAt: string
+}
+
+export interface TrendData {
+  title: string
+  desc: string
+  authorName: string
+  playCount: number
+  likeCount: number
+  commentCount: number
+  createdAt: string
+}
+
 export interface ElectronAPI {
   // 设置
   getStore: (key: string) => Promise<unknown>
@@ -138,6 +166,7 @@ export interface ElectronAPI {
   getCrawlContent: (taskId: number) => Promise<CrawlContent[]>
   getCrawlCreators: (taskId: number) => Promise<CrawlCreator[]>
   analyzeVideoData: (platform: string, sourceUid?: string) => Promise<VideoAnalysis | null>
+  getAllCrawlContent: (platform?: string) => Promise<CrawlContent[]>
   // 来源
   getSources: (platform: string) => Promise<SourceInfo[]>
   getVideosBySource: (platform: string, sourceUid: string) => Promise<CrawlContent[]>
@@ -147,11 +176,19 @@ export interface ElectronAPI {
   starCreator: (uid: string) => Promise<boolean>
   pinCreator: (uid: string) => Promise<boolean>
   deleteCreator: (uid: string) => Promise<boolean>
+  deleteMessage: (id: number) => Promise<boolean>
   exportSourceData: (sourceUid: string) => Promise<boolean>
   // 分类
   autoCategorize: (platform: string) => Promise<AutoCategorizeResult>
   getCategories: (platform: string) => Promise<CategoryInfo[]>
   updateCategory: (contentId: string, category: string) => Promise<boolean>
+  // 灵感库
+  suggestTopics: (platform: string) => Promise<{ topics: TopicSuggestion[]; error?: string }>
+  getTopicTrends: (platform: string) => Promise<TrendData[]>
+  saveTopic: (topic: Record<string, unknown>) => Promise<boolean>
+  getSavedTopics: (platform?: string) => Promise<SavedTopic[]>
+  sendTopicToChat: (topic: Record<string, unknown>) => Promise<boolean>
+  onTopicToChat: (callback: (event: string) => void) => () => void
 }
 
 declare global {

@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>知更 (Knower) 图标资产库</title>
+    <!-- 引入 React 和 Babel -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- 引入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 Lucide 图标 (用于界面UI) -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: #f8fafc;
+            color: #0f172a;
+        }
+        .toast-enter {
+            animation: slideIn 0.3s ease-out forwards;
+        }
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(1rem); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useRef, useEffect } = React;
+
+        // --- 核心配置：品牌色彩与图标变体 ---
+        const COLORS = {
+            darkest: '#101A2F',
+            dark: '#1E3A8A',
+            primary: '#4F7CFF',
+            sunLight: '#FFD487',
+            sunDark: '#FF9E4D',
+            white: '#FFFFFF',
+            transparent: 'transparent'
+        };
+
+        const ICON_VARIANTS = [
+            {
+                id: 'colorful',
+                name: '全彩主图标',
+                config: {
+                    bg: COLORS.darkest, shape: 'squircle', stars: COLORS.white, 
+                    sun: COLORS.sunDark, rays: COLORS.sunLight, water: COLORS.sunDark,
+                    hill: COLORS.dark, bird: COLORS.primary, wing: COLORS.darkest, 
+                    beak: COLORS.sunLight, eye: COLORS.darkest, cutout: COLORS.darkest
+                }
+            },
+            {
+                id: 'monochrome-light-blue',
+                name: '单色 (知更蓝底)',
+                config: {
+                    bg: COLORS.primary, shape: 'squircle', stars: COLORS.white, 
+                    sun: COLORS.white, rays: COLORS.white, water: COLORS.white,
+                    hill: COLORS.white, bird: COLORS.white, wing: COLORS.primary, 
+                    beak: COLORS.white, eye: COLORS.primary, cutout: COLORS.primary
+                }
+            },
+            {
+                id: 'monochrome-dark',
+                name: '单色 (深蓝底)',
+                config: {
+                    bg: COLORS.darkest, shape: 'squircle', stars: COLORS.white, 
+                    sun: COLORS.white, rays: COLORS.white, water: COLORS.white,
+                    hill: COLORS.white, bird: COLORS.white, wing: COLORS.darkest, 
+                    beak: COLORS.white, eye: COLORS.darkest, cutout: COLORS.darkest
+                }
+            },
+            {
+                id: 'monochrome-white',
+                name: '单色 (白底)',
+                config: {
+                    bg: COLORS.white, shape: 'squircle', border: '#E2E8F0', stars: COLORS.darkest, 
+                    sun: COLORS.darkest, rays: COLORS.darkest, water: COLORS.darkest,
+                    hill: COLORS.darkest, bird: COLORS.darkest, wing: COLORS.white, 
+                    beak: COLORS.darkest, eye: COLORS.white, cutout: COLORS.white
+                }
+            },
+            {
+                id: 'monochrome-circle',
+                name: '单色 (圆形深蓝)',
+                config: {
+                    bg: COLORS.darkest, shape: 'circle', stars: COLORS.white, 
+                    sun: COLORS.white, rays: COLORS.white, water: COLORS.white,
+                    hill: COLORS.white, bird: COLORS.white, wing: COLORS.darkest, 
+                    beak: COLORS.white, eye: COLORS.darkest, cutout: COLORS.darkest
+                }
+            }
+        ];
+
+        // --- SVG 渲染组件 ---
+        const KnowerIcon = ({ config, size = 512, innerRef }) => {
+            // 移除了独立的 beak 配置提取
+            const { bg, shape, border, stars, sun, rays, water, hill, bird, wing, eye, cutout } = config;
+            
+            // 路径定义 (使用纯数学几何模拟原图手绘优美曲线)
+            const PATHS = {
+                // 枝干/地平线
+                hill: "M -20 440 Q 150 360 550 430 L 550 550 L -20 550 Z",
+                // 为了区分单色版的层级，底座的切割线 (负空间)
+                hillCutout: "M -20 430 Q 150 350 550 420 L 550 440 Q 150 370 -20 450 Z",
+                // 鸟身体 (流线型，调整了头部基准坐标以无缝衔接鸟嘴)
+                birdBody: `
+                    M 250 135
+                    C 220 90, 160 100, 120 150
+                    C 90 190, 70 270, 40 360
+                    L 15 400 L 50 435 L 90 375
+                    C 140 420, 230 370, 260 260
+                    C 275 190, 260 165, 245 155 Z
+                `,
+                // 翅膀 (覆盖在身体上，单色版作为负空间呈现)
+                wing: `
+                    M 145 220
+                    C 195 210, 240 240, 240 310
+                    C 240 380, 170 420, 80 445
+                    C 120 380, 115 300, 145 220 Z
+                `,
+                // 鸣叫的喙 (升级为贝塞尔曲线，消除生硬的三角形，并与头部坐标贴合)
+                beakTop: "M 250 135 Q 280 115 295 110 Q 275 135 245 145 Z",
+                beakBottom: "M 242 152 Q 275 145 285 140 Q 265 160 252 165 Z"
+            };
+
+            return (
+                <svg 
+                    ref={innerRef}
+                    xmlns="http://www.w3.org/2000/svg" 
+                    viewBox="0 0 512 512" 
+                    width={size} 
+                    height={size}
+                    style={{ borderRadius: shape === 'circle' ? '50%' : '22.5%', border: border ? `1px solid ${border}` : 'none' }}
+                >
+                    <defs>
+                        <clipPath id={`clip-${shape}`}>
+                            {shape === 'circle' 
+                                ? <circle cx="256" cy="256" r="256" /> 
+                                : <rect width="512" height="512" rx="115" />
+                            }
+                        </clipPath>
+                    </defs>
+
+                    <g clipPath={`url(#clip-${shape})`}>
+                        {/* 背景 */}
+                        <rect width="512" height="512" fill={bg} />
+
+                        {/* 星星点缀 */}
+                        <g fill={stars}>
+                            <circle cx="100" cy="120" r="4" />
+                            <circle cx="230" cy="80" r="3.5" />
+                            <circle cx="430" cy="110" r="4.5" />
+                            <circle cx="450" cy="210" r="3" />
+                            <circle cx="120" cy="250" r="2.5" />
+                            <polygon points="320,50 324,58 332,60 324,62 320,70 316,62 308,60 316,58" fill={stars}/>
+                        </g>
+
+                        {/* 日出元素 - 太阳 */}
+                        <path d="M 330 395 A 85 85 0 0 1 500 395 Z" fill={sun} />
+                        <rect x="310" y="405" width="200" height="8" rx="4" fill={water} />
+                        <rect x="360" y="425" width="100" height="8" rx="4" fill={water} />
+                        <rect x="420" y="445" width="40" height="8" rx="4" fill={water} />
+
+                        {/* 日出元素 - 光芒 */}
+                        <g stroke={rays} strokeWidth="8" strokeLinecap="round">
+                            <line x1="415" y1="280" x2="415" y2="230" />
+                            <line x1="345" y1="305" x2="305" y2="265" />
+                            <line x1="485" y1="305" x2="525" y2="265" />
+                        </g>
+
+                        {/* 枝干/地平线 */}
+                        <path d={PATHS.hill} fill={hill} />
+                        {/* 如果是单色模式，增加一条裁切线增加层次 */}
+                        <path d={PATHS.hillCutout} fill={cutout} opacity="0.5" />
+
+                        {/* 鸟身体 */}
+                        <path d={PATHS.birdBody} fill={bird} />
+                        
+                        {/* 鸟喙 (修复：强制与鸟身同色，融为一体) */}
+                        <path d={PATHS.beakTop} fill={bird} />
+                        <path d={PATHS.beakBottom} fill={bird} />
+
+                        {/* 翅膀 (在彩色版是深色，在单色版利用背景色产生负空间效果) */}
+                        <path d={PATHS.wing} fill={wing} />
+
+                        {/* 眼睛 (微调了坐标以适应新的头部轮廓) */}
+                        <circle cx="230" cy="135" r="5.5" fill={eye} />
+                    </g>
+                </svg>
+            );
+        };
+
+
+        // --- 应用主界面 ---
+        const App = () => {
+            const [toastMsg, setToastMsg] = useState('');
+            const svgRefs = useRef({});
+
+            useEffect(() => {
+                lucide.createIcons();
+            }, []);
+
+            const showToast = (msg) => {
+                setToastMsg(msg);
+                setTimeout(() => setToastMsg(''), 2500);
+            };
+
+            const handleCopyCode = (id) => {
+                const svgNode = svgRefs.current[id];
+                if (svgNode) {
+                    const serializer = new XMLSerializer();
+                    let source = serializer.serializeToString(svgNode);
+                    // 确保命名空间存在
+                    if(!source.match(/^<svg[^>]+xmlns="http\:\/\/www\.w3\.org\/2000\/svg"/)){
+                        source = source.replace(/^<svg/, '<svg xmlns="http://www.w3.org/2000/svg"');
+                    }
+                    navigator.clipboard.writeText(source).then(() => {
+                        showToast('SVG 代码已复制到剪贴板！');
+                    });
+                }
+            };
+
+            const handleDownloadSVG = (id, filename) => {
+                const svgNode = svgRefs.current[id];
+                if (svgNode) {
+                    const serializer = new XMLSerializer();
+                    let source = serializer.serializeToString(svgNode);
+                    if(!source.match(/^<svg[^>]+xmlns="http\:\/\/www\.w3\.org\/2000\/svg"/)){
+                        source = source.replace(/^<svg/, '<svg xmlns="http://www.w3.org/2000/svg"');
+                    }
+                    const blob = new Blob([source], { type: 'image/svg+xml;charset=utf-8' });
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = `knower-${filename}.svg`;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                }
+            };
+
+            const handleDownloadPNG = (id, filename) => {
+                const svgNode = svgRefs.current[id];
+                if (svgNode) {
+                    const serializer = new XMLSerializer();
+                    let source = serializer.serializeToString(svgNode);
+                    if(!source.match(/^<svg[^>]+xmlns="http\:\/\/www\.w3\.org\/2000\/svg"/)){
+                        source = source.replace(/^<svg/, '<svg xmlns="http://www.w3.org/2000/svg"');
+                    }
+                    
+                    const canvas = document.createElement('canvas');
+                    // 导出 1024x1024 高清大图
+                    canvas.width = 1024;
+                    canvas.height = 1024;
+                    const ctx = canvas.getContext('2d');
+                    const img = new Image();
+                    
+                    // 将 SVG 转为 Base64
+                    const svg64 = btoa(unescape(encodeURIComponent(source)));
+                    const b64Start = 'data:image/svg+xml;base64,';
+                    const image64 = b64Start + svg64;
+                    
+                    img.onload = () => {
+                        ctx.drawImage(img, 0, 0, 1024, 1024);
+                        const pngData = canvas.toDataURL('image/png');
+                        const link = document.createElement('a');
+                        link.href = pngData;
+                        link.download = `knower-${filename}-1024px.png`;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                    };
+                    img.src = image64;
+                }
+            };
+
+            return (
+                <div className="min-h-screen pb-20">
+                    {/* Header */}
+                    <header className="bg-white shadow-sm sticky top-0 z-10">
+                        <div className="max-w-6xl mx-auto px-4 py-6 flex items-center justify-between">
+                            <div className="flex items-center gap-4">
+                                <KnowerIcon config={ICON_VARIANTS[0].config} size={48} />
+                                <div>
+                                    <h1 className="text-2xl font-bold text-gray-900">知更 (Knower) 图标资产</h1>
+                                    <p className="text-sm text-gray-500 mt-1">让创作者比平台更早知道下一步该做什么</p>
+                                </div>
+                            </div>
+                        </div>
+                    </header>
+
+                    {/* Main Content */}
+                    <main className="max-w-6xl mx-auto px-4 py-12">
+                        
+                        <div className="mb-12">
+                            <h2 className="text-xl font-semibold mb-6 flex items-center gap-2">
+                                <i data-lucide="layers" className="w-5 h-5 text-blue-600"></i>
+                                核心图标 (Main Icon)
+                            </h2>
+                            <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 flex flex-col md:flex-row gap-12 items-center">
+                                <div className="flex-shrink-0 w-64 h-64 md:w-96 md:h-96 drop-shadow-xl">
+                                     <KnowerIcon 
+                                        innerRef={el => svgRefs.current[ICON_VARIANTS[0].id] = el}
+                                        config={ICON_VARIANTS[0].config} 
+                                        size="100%" 
+                                    />
+                                </div>
+                                <div className="flex-1 space-y-6">
+                                    <h3 className="text-2xl font-bold">{ICON_VARIANTS[0].name}</h3>
+                                    <p className="text-gray-600 leading-relaxed">
+                                        基于第一性原理利用 SVG Path 重构。包含了夜空背景、日出元素、地平线底座以及知更鸟主体。曲线经过平滑处理，完美适配各大平台的 1024px 规范。
+                                    </p>
+                                    <div className="flex flex-wrap gap-4 pt-4">
+                                        <button onClick={() => handleCopyCode(ICON_VARIANTS[0].id)} className="flex items-center gap-2 px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg font-medium transition-colors">
+                                            <i data-lucide="code" className="w-4 h-4"></i> 复制 SVG
+                                        </button>
+                                        <button onClick={() => handleDownloadSVG(ICON_VARIANTS[0].id, 'main')} className="flex items-center gap-2 px-5 py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg font-medium transition-colors">
+                                            <i data-lucide="download" className="w-4 h-4"></i> 下载 .SVG
+                                        </button>
+                                        <button onClick={() => handleDownloadPNG(ICON_VARIANTS[0].id, 'main')} className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors shadow-sm shadow-blue-200">
+                                            <i data-lucide="image" className="w-4 h-4"></i> 下载高清 PNG (1024px)
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <h2 className="text-xl font-semibold mb-6 flex items-center gap-2">
+                                <i data-lucide="copy" className="w-5 h-5 text-blue-600"></i>
+                                单色与变体 (Monochrome Variants)
+                            </h2>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                                {ICON_VARIANTS.slice(1).map((variant) => (
+                                    <div key={variant.id} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center group hover:shadow-md transition-shadow">
+                                        <div className="w-32 h-32 mb-6 drop-shadow-sm group-hover:scale-105 transition-transform duration-300">
+                                            <KnowerIcon 
+                                                innerRef={el => svgRefs.current[variant.id] = el}
+                                                config={variant.config} 
+                                                size="100%" 
+                                            />
+                                        </div>
+                                        <h4 className="font-medium text-gray-800 mb-4">{variant.name}</h4>
+                                        <div className="w-full flex flex-col gap-2">
+                                            <button onClick={() => handleCopyCode(variant.id)} className="w-full flex justify-center items-center gap-2 px-4 py-2 bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-md text-sm transition-colors border border-gray-200">
+                                                <i data-lucide="copy" className="w-3.5 h-3.5"></i> 复制代码
+                                            </button>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <button onClick={() => handleDownloadSVG(variant.id, variant.id)} className="flex justify-center items-center gap-1.5 px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-md text-xs font-medium transition-colors">
+                                                    SVG
+                                                </button>
+                                                <button onClick={() => handleDownloadPNG(variant.id, variant.id)} className="flex justify-center items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-xs font-medium transition-colors">
+                                                    PNG
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                    </main>
+
+                    {/* Toast Notification */}
+                    {toastMsg && (
+                        <div className="fixed bottom-8 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 toast-enter z-50">
+                            <i data-lucide="check-circle" className="w-5 h-5 text-green-400"></i>
+                            <span className="font-medium">{toastMsg}</span>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>

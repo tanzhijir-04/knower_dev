@@ -21,7 +21,6 @@ function formatDate(s: string) {
 // ============================================================
 
 function Avatar({ src, name, size = 32 }: { src?: string; name: string; size?: number }) {
-  const sz = `w-${size / 4} h-${size / 4}` // tailwind doesn't support dynamic, use inline style
   if (src) {
     return <img src={src} alt={name} style={{ width: size, height: size }} className="rounded-full object-cover border border-outline-variant shrink-0" />
   }
@@ -40,6 +39,8 @@ function Avatar({ src, name, size = 32 }: { src?: string; name: string; size?: n
 // ============================================================
 
 function ProgressBar({ status, logs }: { status: string; logs?: string[] }) {
+  const isDone = status.includes("完成")
+  const isFailed = status.includes("失败") || status.includes("出错")
   const logEndRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -47,7 +48,7 @@ function ProgressBar({ status, logs }: { status: string; logs?: string[] }) {
   return (
     <div className="bg-surface-container rounded-xl px-5 py-4">
       <div className="flex items-center gap-3 mb-2">
-        <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+        {isDone ? (<span className="material-symbols-outlined text-[20px] text-green-400">check_circle</span>) : isFailed ? (<span className="material-symbols-outlined text-[20px] text-red-400">error</span>) : (<div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />)}
         <span className="text-sm text-on-surface font-medium">{status}</span>
       </div>
       {logs && logs.length > 0 && (
@@ -456,9 +457,11 @@ export default function DataView() {
         } else if (evt.type === 'done') {
           setCrawlStatus('爬取完成')
           setCrawlLogs(prev => [...prev, `爬取完成，共 ${evt.count || 0} 条数据`])
+          setTimeout(() => setCrawlStatus(''), 3000)
         } else if (evt.type === 'error') {
           setCrawlStatus('爬取出错')
           setCrawlLogs(prev => [...prev, `错误: ${evt.message || '未知错误'}`])
+          setTimeout(() => setCrawlStatus(''), 3000)
         }
       } catch { /* ignore */ }
     })
@@ -484,19 +487,7 @@ export default function DataView() {
     try {
       let vids: CrawlContent[]
       if (selectedSource === 'all') {
-        // 全部：遍历所有 task 去重
-        const allContent: CrawlContent[] = []
-        const tasks = await api.listCrawlTasks()
-        for (const t of tasks) {
-          const c = await api.getCrawlContent(t.id)
-          allContent.push(...c)
-        }
-        const seen = new Set<string>()
-        vids = allContent.filter(v => {
-          if (seen.has(v.contentId)) return false
-          seen.add(v.contentId)
-          return true
-        })
+        vids = await api.getAllCrawlContent(crawlPlatform)
       } else {
         vids = await api.getVideosBySource(crawlPlatform, selectedSource)
       }
@@ -524,7 +515,7 @@ export default function DataView() {
         avgLike: Math.round(totalLike / videos.length),
       },
       topByEngagement: videos.map(v => {
-        const raw = (v as unknown as { rawJson?: Record<string, string> }).rawJson || {}
+        const raw = v.rawJson || {}
         const coin = parseInt(raw.video_coin_count) || 0
         const fav = parseInt(raw.video_favorite_count) || 0
         const danmaku = parseInt(raw.video_danmaku) || 0
@@ -548,6 +539,13 @@ export default function DataView() {
   // AI 分析（手动触发）
   const runAIAnalysis = async () => {
     if (!api) return
+    // Pre-check: API key
+    const settings: Record<string, unknown> = await api.getStoreAll().catch(() => ({}))
+    if (!settings.apiKey) {
+      setAiStatus('请先在设置页配置 API Key')
+      setTimeout(() => setAiStatus(''), 4000)
+      return
+    }
     setAnalyzing(true)
     setAiStatus('正在调用 AI 分析数据...')
     try {
@@ -566,9 +564,10 @@ export default function DataView() {
         setAiStatus('分析完成')
         setTimeout(() => setAiStatus(''), 2000)
       }
-    } catch {
-      setAiStatus('AI 分析出错')
-      setTimeout(() => setAiStatus(''), 3000)
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      setAiStatus('AI 分析出错: ' + (msg.length > 80 ? msg.slice(0, 80) + '...' : msg))
+      setTimeout(() => setAiStatus(''), 5000)
     }
     setAnalyzing(false)
   }
@@ -586,8 +585,9 @@ export default function DataView() {
       } else {
         setCategorizeStatus(result.error || '分类失败')
       }
-    } catch {
-      setCategorizeStatus('分类出错')
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      setCategorizeStatus('AI 分类出错: ' + (msg.length > 80 ? msg.slice(0, 80) + '...' : msg))
     }
     setTimeout(() => setCategorizeStatus(''), 3000)
     setCategorizing(false)
@@ -632,10 +632,12 @@ export default function DataView() {
       } else {
         setCrawlStatus('爬取失败')
         setCrawlLogs(prev => [...prev, `失败: ${result.error || '未知错误'}`])
+        setTimeout(() => setCrawlStatus(''), 3000)
       }
     } catch {
       setCrawlStatus('爬取出错')
       setCrawlLogs(prev => [...prev, '请检查网络或登录状态'])
+      setTimeout(() => setCrawlStatus(''), 3000)
     }
     setAnalyzing(false)
   }
@@ -995,7 +997,13 @@ export default function DataView() {
             <span>📦</span> 导出全部数据
           </button>
           <div className="h-px bg-outline-variant mx-2 my-1" />
-          <button onClick={() => { setMoreMenuOpen(false) }} className="w-full px-3 py-2 text-left text-xs text-red-400 hover:bg-red-500/10 flex items-center gap-2">
+          <button onClick={async () => {
+            if (!confirm('确定清空全部历史数据？此操作不可恢复。')) return
+            if (api?.cleanOldData) await api.cleanOldData()
+            setMoreMenuOpen(false)
+            setSelectedSource('all')
+            await loadSources()
+          }} className="w-full px-3 py-2 text-left text-xs text-red-400 hover:bg-red-500/10 flex items-center gap-2">
             <span>🗑️</span> 清空全部历史
           </button>
         </div>

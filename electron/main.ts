@@ -4,6 +4,8 @@ import fs from 'node:fs'
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const Agent = require('../knower-agent/agent/core')
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { createClient } = require('../knower-agent/llm')
 
 const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
 
@@ -115,6 +117,7 @@ ipcMain.handle('agent-run', async (event, script: string, platforms: string[]) =
     apiKey: settings.apiKey as string,
     model: (settings.model as string) || 'claude-sonnet-4-20250514',
     baseUrl: (settings.baseUrl as string) || '',
+    provider: (settings.apiProvider as string) || 'claude',
   })
 
   const prompt = `请帮我分析以下脚本，并为 ${platforms.join('、')} 三个平台生成发布物料：\n\n${script}`
@@ -164,6 +167,11 @@ ipcMain.handle('conv-create', async (_event, title: string) => {
 
 ipcMain.handle('conv-delete', async (_event, id: number) => {
   await db.deleteConversation(id)
+  return true
+})
+
+ipcMain.handle('delete-message', async (_event, id: number) => {
+  await db.deleteMessage(id)
   return true
 })
 
@@ -249,6 +257,10 @@ ipcMain.handle('get-videos-by-source', async (_event, platform: string, sourceUi
   return await db.getVideosBySource(platform || 'bili', sourceUid || '')
 })
 
+ipcMain.handle('get-all-crawl-content', async (_event, platform?: string) => {
+  return await db.getAllCrawlContent(platform || null)
+})
+
 // ============================================================
 //  创作者管理
 // ============================================================
@@ -278,7 +290,12 @@ ipcMain.handle('delete-creator', async (_event, uid: string) => {
 })
 
 ipcMain.handle('export-source-data', async (_event, sourceUid: string) => {
-  const videos = await db.getVideosBySource('bili', sourceUid)
+  // 从所有平台中查找该 sourceUid 的数据
+  let videos: Record<string, unknown>[] = []
+  for (const p of ['bili', 'dy', 'xhs', 'wb']) {
+    const found = await db.getVideosBySource(p, sourceUid)
+    if (found.length) { videos = found; break }
+  }
   const creators = await db.getCreators()
   const creator = creators.find((c: { uid: string }) => c.uid === sourceUid)
   const exportData = {
@@ -383,21 +400,18 @@ ${videoDataStr}
 2. suggestions 每条要具体可执行，引用数据依据
 3. 只输出 JSON，不要任何其他文字`
 
-  // 调用 LLM（用用户配置的 API）
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const Anthropic = require('../knower-agent/node_modules/@anthropic-ai/sdk')
-  const client = new Anthropic({
+  // 调用 LLM（通过适配器）
+  const llmClient = createClient({
     apiKey: settings.apiKey as string,
-    ...(settings.baseUrl ? { baseURL: settings.baseUrl as string } : {}),
-  })
-
-  const response = await client.messages.create({
     model: (settings.model as string) || 'claude-sonnet-4-20250514',
-    max_tokens: 2048,
-    messages: [{ role: 'user', content: prompt }],
+    baseUrl: (settings.baseUrl as string) || '',
+    provider: (settings.apiProvider as string) || 'claude',
   })
-
-  const text = response.content
+  const chatResponse = await llmClient.chat({
+    messages: [{ role: 'user', content: prompt }],
+    maxTokens: 2048,
+  })
+  const text = chatResponse.content
     .filter((b: { type: string }) => b.type === 'text')
     .map((b: { type: string; text: string }) => b.text)
     .join('')
@@ -481,20 +495,18 @@ ${videoList}
 - 不要输出标题、解释或其他内容
 - 如果某个视频无法判断，分类为"其他"`
 
-  const Anthropic = require('../knower-agent/node_modules/@anthropic-ai/sdk')
-  const client = new Anthropic({
+  const catClient = createClient({
     apiKey: settings.apiKey as string,
-    ...(settings.baseUrl ? { baseURL: settings.baseUrl as string } : {}),
+    model: (settings.model as string) || 'claude-sonnet-4-20250514',
+    baseUrl: (settings.baseUrl as string) || '',
+    provider: (settings.apiProvider as string) || 'claude',
   })
-
   try {
-    const response = await client.messages.create({
-      model: (settings.model as string) || 'claude-sonnet-4-20250514',
-      max_tokens: 2048,
+    const catResponse = await catClient.chat({
       messages: [{ role: 'user', content: prompt }],
+      maxTokens: 2048,
     })
-
-    const text = response.content
+    const text = catResponse.content
       .filter((b: { type: string }) => b.type === 'text')
       .map((b: { type: string; text: string }) => b.text)
       .join('')
@@ -531,5 +543,46 @@ ipcMain.handle('get-categories', async (_event, platform: string) => {
 
 ipcMain.handle('update-category', async (_event, contentId: string, category: string) => {
   await db.categorizeVideo(contentId, category)
+  return true
+})
+
+// ============================================================
+//  灵感库
+// ============================================================
+
+let pendingTopic: Record<string, unknown> | null = null
+
+ipcMain.handle('topics-suggest', async (_event, platform: string) => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const suggestTool = require('../knower-agent/agent/tools/suggest_topics')
+  return await suggestTool.execute({ platform, count: 5 })
+})
+
+ipcMain.handle('topics-trends', async (_event, platform: string) => {
+  return await db.getRecentTrends(platform || 'bili', 7)
+})
+
+ipcMain.handle('topics-save', async (_event, topic: Record<string, unknown>) => {
+  await db.saveTopic(
+    topic.platform as string,
+    topic.title as string,
+    topic.reason as string,
+    topic.source as string,
+    topic.estimatedPerformance as string,
+    topic.tags as string[],
+    topic.fullData as Record<string, unknown>,
+  )
+  return true
+})
+
+ipcMain.handle('topics-saved', async (_event, platform?: string) => {
+  return await db.getSavedTopics(platform || null)
+})
+
+ipcMain.handle('topic-to-chat', async (_event, topic: Record<string, unknown>) => {
+  pendingTopic = topic
+  if (mainWindow) {
+    mainWindow.webContents.send('topic-to-chat-event', JSON.stringify(topic))
+  }
   return true
 })

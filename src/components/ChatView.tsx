@@ -3,6 +3,15 @@ import Markdown from 'react-markdown'
 import MaterialCards, { extractMaterialData } from './MaterialCards'
 import type { Message, Conversation } from '../types/electron'
 
+async function readFileAsText(file: File): Promise<string> {
+  if (file.name.endsWith('.docx')) {
+    const mammoth = await import('mammoth')
+    const result = await mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() })
+    return result.value
+  }
+  return await file.text()
+}
+
 const WELCOME_MESSAGE = '你好！我是知更 AI，你的智能创作助手。把脚本丢给我，我帮你拆解成各平台的发布物料。'
 
 const SUGGESTIONS = [
@@ -18,7 +27,12 @@ const SUGGESTIONS = [
   },
 ]
 
-export default function ChatView() {
+interface Props {
+  pendingTopic?: import('../types/electron').TopicSuggestion | null
+  onTopicConsumed?: () => void
+}
+
+export default function ChatView({ pendingTopic, onTopicConsumed }: Props) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
@@ -27,6 +41,8 @@ export default function ChatView() {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [showHistory, setShowHistory] = useState(false)
   const [copiedId, setCopiedId] = useState<string | null>(null)
+  const [importedFile, setImportedFile] = useState<string | null>(null)
+  const toolDataRef = useRef<{ analysis?: Record<string, unknown>; result?: Record<string, unknown> }>({})
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const assistantIdRef = useRef('')
@@ -47,6 +63,17 @@ export default function ChatView() {
 
   useEffect(() => { loadConversations() }, [loadConversations])
 
+  // Handle incoming topic from TopicsView
+  useEffect(() => {
+    if (pendingTopic) {
+      const platforms = pendingTopic.platforms?.join('、') || 'B站、抖音、小红书'
+      const prompt = `请帮我基于以下选题生成各平台的发布物料：\n\n选题：${pendingTopic.title}\n方向：${pendingTopic.reason}\n目标平台：${platforms}`
+      setInput(prompt)
+      onTopicConsumed?.()
+      textareaRef.current?.focus()
+    }
+  }, [pendingTopic, onTopicConsumed])
+
   // 监听 Agent 事件
   useEffect(() => {
     const api = window.electronAPI
@@ -65,7 +92,35 @@ export default function ChatView() {
             return prev
           })
         } else if (event.type === 'tool_call') {
+          if (event.name === 'analyze_script' && event.input?.analysis) {
+            toolDataRef.current.analysis = event.input.analysis
+            setMessages((prev) => {
+              const last = prev[prev.length - 1]
+              if (last && last.id === assistantIdRef.current) {
+                return [...prev.slice(0, -1), { ...last, toolAnalysis: event.input.analysis }]
+              }
+              return prev
+            })
+          } else if (event.name === 'expand_script' && event.input?.result) {
+            toolDataRef.current.result = event.input.result
+            setMessages((prev) => {
+              const last = prev[prev.length - 1]
+              if (last && last.id === assistantIdRef.current) {
+                return [...prev.slice(0, -1), { ...last, toolResult: event.input.result }]
+              }
+              return prev
+            })
+          } else if (event.name === 'save_result') {
+            if (!toolDataRef.current.analysis && event.input?.analysis) {
+              toolDataRef.current.analysis = event.input.analysis
+            }
+            if (!toolDataRef.current.result && event.input?.result) {
+              toolDataRef.current.result = event.input.result
+            }
+          }
           const labels: Record<string, string> = {
+            analyze_script: '分析脚本结构...',
+            expand_script: '生成各平台物料...',
             save_result: '保存到数据库...',
           }
           setStatus(labels[event.name] || `处理中...`)
@@ -124,6 +179,7 @@ export default function ChatView() {
 
     const assistantId = (Date.now() + 1).toString()
     assistantIdRef.current = assistantId
+    toolDataRef.current = {}
     const assistantMessage: Message = {
       id: assistantId,
       role: 'assistant',
@@ -132,6 +188,7 @@ export default function ChatView() {
 
     setMessages((prev) => [...prev, userMessage, assistantMessage])
     setInput('')
+    setImportedFile(null)
     setIsStreaming(true)
     setStatus('正在分析...')
 
@@ -204,11 +261,50 @@ export default function ChatView() {
     loadConversations()
   }
 
+
+  // 删除单条消息
+  const handleDeleteMessage = async (msgId: string) => {
+    const api = window.electronAPI
+    // If id is numeric (from DB), delete from DB too
+    if (/^d+$/.test(msgId) && msgId.length < 15) {
+      await api?.deleteMessage(Number(msgId))
+    }
+    setMessages(prev => prev.filter(m => m.id !== msgId))
+  }
+
+  // 导出单条消息为 txt
+  const handleExportMessage = (msg: Message) => {
+    const text = msg.role === 'assistant' ? msg.content.replace(/<[^>]+>/g, '') : msg.content
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${msg.role === 'user' ? '提问' : '回答'}_${new Date().toISOString().slice(0, 10)}.txt`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSend()
     }
+  }
+
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const handleFileImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    try {
+      const text = await readFileAsText(file)
+      if (text) {
+        setInput(prev => prev ? prev + '\n\n' + text : text)
+        setImportedFile(file.name)
+        textareaRef.current?.focus()
+      }
+    } catch { /* ignore */ }
+    e.target.value = ''
   }
 
   const handleSuggestionClick = (title: string) => {
@@ -300,7 +396,11 @@ export default function ChatView() {
         ) : (
           <div className="flex flex-col gap-4 p-6 max-w-3xl mx-auto">
             {messages.map((msg) => {
-              const materialData = msg.role === 'assistant' ? extractMaterialData(msg.content) : null
+              const textParsed = msg.role === 'assistant' ? extractMaterialData(msg.content) : null
+              const toolData = (msg.toolAnalysis || msg.toolResult)
+                ? { analysis: msg.toolAnalysis, result: msg.toolResult }
+                : null
+              const materialData = toolData || textParsed
               // 移除 JSON 代码块后的纯文本
               const textContent = materialData
                 ? msg.content.replace(/```json\s*[\s\S]*?```/g, '').trim()
@@ -324,18 +424,34 @@ export default function ChatView() {
                     ) : (
                       msg.content
                     )}
-                    {/* Copy button */}
-                    {msg.role === 'assistant' && msg.content && (
+                    {/* Hover action bar */}
+                    <div className="absolute -bottom-9 right-0 flex items-center gap-1 opacity-0 group-hover/bubble:opacity-100 transition-opacity">
+                      {msg.content && (
+                        <button
+                          onClick={() => handleCopy(msg.id, msg.content)}
+                          className="text-mute hover:text-on-surface p-1 rounded hover:bg-surface-high"
+                          title="复制"
+                        >
+                          <span className="material-symbols-outlined text-[14px]">
+                            {copiedId === msg.id ? 'check' : 'content_copy'}
+                          </span>
+                        </button>
+                      )}
                       <button
-                        onClick={() => handleCopy(msg.id, msg.content)}
-                        className="absolute -bottom-8 right-0 text-mute hover:text-on-surface opacity-0 group-hover/bubble:opacity-100 transition-opacity"
-                        title="复制"
+                        onClick={() => handleExportMessage(msg)}
+                        className="text-mute hover:text-on-surface p-1 rounded hover:bg-surface-high"
+                        title="导出为文件"
                       >
-                        <span className="material-symbols-outlined text-[16px]">
-                          {copiedId === msg.id ? 'check' : 'content_copy'}
-                        </span>
+                        <span className="material-symbols-outlined text-[14px]">download</span>
                       </button>
-                    )}
+                      <button
+                        onClick={() => handleDeleteMessage(msg.id)}
+                        className="text-mute hover:text-red-400 p-1 rounded hover:bg-red-500/10"
+                        title="删除"
+                      >
+                        <span className="material-symbols-outlined text-[14px]">delete</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               )
@@ -357,8 +473,29 @@ export default function ChatView() {
 
       {/* Input bar */}
       <div className="px-4 pb-4 shrink-0">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".txt,.md,.docx"
+          onChange={handleFileImport}
+          className="hidden"
+        />
+        {importedFile && (
+          <div className="max-w-3xl mx-auto mb-2 flex items-center gap-2">
+            <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full flex items-center gap-1">
+              <span className="material-symbols-outlined text-[14px]">description</span>
+              {importedFile}
+              <button onClick={() => setImportedFile(null)} className="hover:text-on-surface ml-0.5">
+                <span className="material-symbols-outlined text-[12px]">close</span>
+              </button>
+            </span>
+          </div>
+        )}
         <div className="input-bar max-w-3xl mx-auto">
-          <button className="text-on-surface-variant hover:text-on-surface transition-colors shrink-0 mb-0.5">
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="text-on-surface-variant hover:text-on-surface transition-colors shrink-0 mb-0.5"
+          >
             <span className="material-symbols-outlined text-[20px]">attach_file</span>
           </button>
           <textarea

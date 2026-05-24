@@ -189,6 +189,21 @@ function initTables() {
       last_fetched_at DATETIME DEFAULT (datetime('now','localtime'))
     )
   `)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS saved_topics (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      platform TEXT NOT NULL,
+      title TEXT NOT NULL,
+      reason TEXT,
+      source TEXT,
+      estimated_performance TEXT,
+      tags TEXT,
+      full_data TEXT,
+      created_at DATETIME DEFAULT (datetime('now','localtime'))
+    )
+  `)
+  // 修复分类脏数据：将 datetime 格式的 category 值重置为"未分类"
+  db.run("UPDATE crawl_content SET category = '未分类' WHERE category LIKE '____-__-__%'")
 }
 
 async function saveScript(content, analysis, result) {
@@ -220,7 +235,8 @@ async function getScript(id) {
 async function listScripts(limit = 20) {
   const db = await getDb()
   const res = db.exec(
-    `SELECT id, created_at FROM scripts ORDER BY id DESC LIMIT ${limit}`
+    'SELECT id, created_at FROM scripts ORDER BY id DESC LIMIT ?',
+    [limit]
   )
   if (!res.length) return []
   return res[0].values.map((row) => ({
@@ -253,10 +269,19 @@ async function deleteConversation(id) {
   saveDb()
 }
 
+async function deleteMessage(id) {
+  const db = await getDb()
+  db.run('DELETE FROM messages WHERE id = ?', [id])
+  saveDb()
+  return true
+}
+
+
 async function listConversations(limit = 50) {
   const db = await getDb()
   const res = db.exec(
-    `SELECT id, title, created_at, updated_at FROM conversations ORDER BY updated_at DESC LIMIT ${limit}`
+    'SELECT id, title, created_at, updated_at FROM conversations ORDER BY updated_at DESC LIMIT ?',
+    [limit]
   )
   if (!res.length) return []
   return res[0].values.map((row) => ({
@@ -280,7 +305,8 @@ async function addMessage(conversationId, role, content) {
 async function getMessages(conversationId) {
   const db = await getDb()
   const res = db.exec(
-    `SELECT id, role, content, created_at FROM messages WHERE conversation_id = ${conversationId} ORDER BY id ASC`
+    'SELECT id, role, content, created_at FROM messages WHERE conversation_id = ? ORDER BY id ASC',
+    [conversationId]
   )
   if (!res.length) return []
   return res[0].values.map((row) => ({
@@ -399,8 +425,8 @@ async function saveCrawlContentBatch(taskId, platform, contents, sourceUid, sour
 async function getCrawlTasks(limit = 50) {
   const db = await getDb()
   const res = db.exec(
-    `SELECT id, platform, keywords, crawler_type, status, created_at, completed_at
-     FROM crawl_tasks ORDER BY id DESC LIMIT ${limit}`
+    'SELECT id, platform, keywords, crawler_type, status, created_at, completed_at FROM crawl_tasks ORDER BY id DESC LIMIT ?',
+    [limit]
   )
   if (!res.length) return []
   return res[0].values.map((row) => ({
@@ -419,30 +445,36 @@ async function getCrawlContent(taskId, limit = 100) {
   const res = db.exec(
     `SELECT id, platform, content_type, content_id, title, "desc",
             author_name, author_id, like_count, comment_count, share_count,
-            play_count, created_at, fetched_at, category, source_uid, source_name
-     FROM crawl_content WHERE task_id = ? ORDER BY id DESC LIMIT ${limit}`,
-    [taskId]
+            play_count, created_at, raw_json, category, source_uid, source_name
+     FROM crawl_content WHERE task_id = ? ORDER BY id DESC LIMIT ?`,
+    [taskId, limit]
   )
   if (!res.length) return []
-  return res[0].values.map((row) => ({
-    id: row[0],
-    platform: row[1],
-    contentType: row[2],
-    contentId: row[3],
-    title: row[4],
-    desc: row[5],
-    authorName: row[6],
-    authorId: row[7],
-    likeCount: row[8],
-    commentCount: row[9],
-    shareCount: row[10],
-    playCount: row[11],
-    createdAt: row[12],
-    fetchedAt: row[13],
-    category: (/^\d{4}-\d{2}-\d{2}/.test(row[14] || '')) ? '未分类' : (row[14] || '未分类'),
-    sourceUid: row[15] || '',
-    sourceName: row[16] || '',
-  }))
+  return res[0].values.map((row) => {
+    let raw = {}
+    try { raw = JSON.parse(row[13] || '{}') } catch { /* ignore */ }
+    let cat = row[14] || '未分类'
+    if (/^\d{4}-\d{2}-\d{2}/.test(cat)) cat = '未分类'
+    return {
+      id: row[0],
+      platform: row[1],
+      contentType: row[2],
+      contentId: row[3],
+      title: row[4],
+      desc: row[5],
+      authorName: row[6],
+      authorId: row[7],
+      likeCount: row[8],
+      commentCount: row[9],
+      shareCount: row[10],
+      playCount: row[11],
+      createdAt: row[12],
+      rawJson: raw,
+      category: cat,
+      sourceUid: row[15] || '',
+      sourceName: row[16] || '',
+    }
+  })
 }
 
 // --- 爬虫创作者 ---
@@ -568,13 +600,17 @@ async function deleteCreator(uid) {
 
 async function getAllCrawlContent(platform) {
   const db = await getDb()
-  const res = db.exec(
-    `SELECT id, platform, content_type, content_id, title, "desc",
+  let query = `SELECT id, platform, content_type, content_id, title, "desc",
             author_name, author_id, like_count, comment_count, share_count,
             play_count, created_at, raw_json, category, source_uid, source_name
-     FROM crawl_content WHERE platform = ? ORDER BY play_count DESC`,
-    [platform || 'bili']
-  )
+     FROM crawl_content`
+  const params = []
+  if (platform) {
+    query += ' WHERE platform = ?'
+    params.push(platform)
+  }
+  query += ' ORDER BY play_count DESC'
+  const res = db.exec(query, params)
   if (!res.length) return []
   return res[0].values.map((row) => {
     let raw = {}
@@ -607,13 +643,14 @@ async function getAllCrawlContent(platform) {
 
 async function getSourceList(platform) {
   const db = await getDb()
-  const where = platform ? `WHERE platform = '${platform}'` : ''
-  const res = db.exec(
-    `SELECT source_uid, source_name, COUNT(*) as cnt
-     FROM crawl_content ${where}
-     GROUP BY source_uid
-     ORDER BY cnt DESC`
-  )
+  let query = 'SELECT source_uid, source_name, COUNT(*) as cnt FROM crawl_content'
+  const params = []
+  if (platform) {
+    query += ' WHERE platform = ?'
+    params.push(platform)
+  }
+  query += ' GROUP BY source_uid ORDER BY cnt DESC'
+  const res = db.exec(query, params)
   // 获取创作者信息（含收藏/置顶状态）
   const creatorsRes = db.exec('SELECT uid, name, avatar_url, is_starred, is_pinned FROM creators')
   const creatorMap = {}
@@ -622,7 +659,34 @@ async function getSourceList(platform) {
       creatorMap[row[0]] = { name: row[1], avatarUrl: row[2], isStarred: row[3], isPinned: row[4] }
     }
   }
+
+  // Avatar fallback: extract from raw_json if not in creators table
+  const needsAvatar = res[0].values
+    .filter(row => !String(row[0] || '').startsWith('keyword_') && row[0])
+    .map(row => String(row[0]))
+    .filter(uid => !creatorMap[uid] || !creatorMap[uid].avatarUrl);
+  for (const uid of needsAvatar) {
+    const avatarRes = db.exec('SELECT raw_json FROM crawl_content WHERE source_uid = ? LIMIT 1', [uid]);
+    if (avatarRes.length && avatarRes[0].values.length) {
+      try {
+        const raw = JSON.parse(avatarRes[0].values[0][0] || '{}');
+        const avatar = raw.face || raw.avatar || raw.author?.face || raw.author?.avatar || '';
+        if (avatar) {
+          if (!creatorMap[uid]) creatorMap[uid] = { name: uid, avatarUrl: '', isStarred: 0, isPinned: 0 };
+          creatorMap[uid].avatarUrl = avatar;
+        }
+      } catch {}
+    }
+  }
+
   if (!res.length) return []
+
+  // DEBUG: log avatar data
+  console.log('[getSourceList] creatorMap keys:', Object.keys(creatorMap));
+  for (const k of Object.keys(creatorMap)) {
+    console.log('[getSourceList]', k, '-> avatarUrl:', creatorMap[k].avatarUrl ? creatorMap[k].avatarUrl.slice(0, 60) : '(empty)');
+  }
+
   return res[0].values.map((row) => {
     const uid = row[0] || ''
     const isKeyword = uid.startsWith('keyword_')
@@ -644,8 +708,12 @@ async function getVideosBySource(platform, sourceUid) {
   let query = `SELECT id, platform, content_type, content_id, title, "desc",
             author_name, author_id, like_count, comment_count, share_count,
             play_count, created_at, raw_json, category, source_uid, source_name
-     FROM crawl_content WHERE platform = ?`
-  const params = [platform || 'bili']
+     FROM crawl_content WHERE 1=1`
+  const params = []
+  if (platform) {
+    query += ` AND platform = ?`
+    params.push(platform)
+  }
   if (sourceUid) {
     query += ` AND source_uid = ?`
     params.push(sourceUid)
@@ -705,10 +773,14 @@ async function categorizeVideoBatch(updates) {
 
 async function getAllCategories(platform) {
   const db = await getDb()
-  const where = platform ? `WHERE platform = '${platform}'` : ''
-  const res = db.exec(
-    `SELECT category, COUNT(*) as cnt FROM crawl_content ${where} GROUP BY category ORDER BY cnt DESC`
-  )
+  let query = 'SELECT category, COUNT(*) as cnt FROM crawl_content'
+  const params = []
+  if (platform) {
+    query += ' WHERE platform = ?'
+    params.push(platform)
+  }
+  query += ' GROUP BY category ORDER BY cnt DESC'
+  const res = db.exec(query, params)
   if (!res.length) return []
   // 合并时间戳格式的分类到"未分类"，再重新统计
   const merged = { '未分类': 0 }
@@ -724,21 +796,112 @@ async function getAllCategories(platform) {
 
 async function getUncategorizedCount(platform) {
   const db = await getDb()
-  const where = platform ? `AND platform = '${platform}'` : ''
-  const res = db.exec(
-    `SELECT COUNT(*) FROM crawl_content WHERE category = '未分类' ${where}`
-  )
+  let query = "SELECT COUNT(*) FROM crawl_content WHERE category = '未分类'"
+  const params = []
+  if (platform) {
+    query += ' AND platform = ?'
+    params.push(platform)
+  }
+  const res = db.exec(query, params)
   return res.length ? res[0].values[0][0] : 0
+}
+
+// --- 灵感库 ---
+
+async function saveTopic(platform, title, reason, source, estimatedPerformance, tags, fullData) {
+  const db = await getDb()
+  db.run(
+    'INSERT INTO saved_topics (platform, title, reason, source, estimated_performance, tags, full_data) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    [platform, title, reason || '', source || '', estimatedPerformance || '', JSON.stringify(tags || []), JSON.stringify(fullData || {})]
+  )
+  saveDb()
+}
+
+async function getSavedTopics(platform) {
+  const db = await getDb()
+  let query = 'SELECT id, platform, title, reason, source, estimated_performance, tags, full_data, created_at FROM saved_topics'
+  const params = []
+  if (platform) {
+    query += ' WHERE platform = ?'
+    params.push(platform)
+  }
+  query += ' ORDER BY id DESC'
+  const res = db.exec(query, params)
+  if (!res.length) return []
+  return res[0].values.map((row) => ({
+    id: row[0],
+    platform: row[1],
+    title: row[2],
+    reason: row[3],
+    source: row[4],
+    estimatedPerformance: row[5],
+    tags: JSON.parse(row[6] || '[]'),
+    fullData: JSON.parse(row[7] || '{}'),
+    createdAt: row[8],
+  }))
+}
+
+async function deleteSavedTopic(id) {
+  const db = await getDb()
+  db.run('DELETE FROM saved_topics WHERE id = ?', [id])
+  saveDb()
+}
+
+async function getTopContent(platform, limit = 20) {
+  const db = await getDb()
+  const params = [platform || 'bili']
+  const res = db.exec(
+    `SELECT title, "desc", author_name, play_count, like_count, comment_count, share_count, category, created_at
+     FROM crawl_content WHERE platform = ?
+     ORDER BY (like_count + comment_count + share_count) * 1.0 / MAX(play_count, 1) DESC
+     LIMIT ?`,
+    [...params, limit]
+  )
+  if (!res.length) return []
+  return res[0].values.map((row) => ({
+    title: row[0],
+    desc: row[1],
+    authorName: row[2],
+    playCount: row[3],
+    likeCount: row[4],
+    commentCount: row[5],
+    shareCount: row[6],
+    category: row[7],
+    createdAt: row[8],
+  }))
+}
+
+async function getRecentTrends(platform, days = 7) {
+  const db = await getDb()
+  const dateThreshold = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10)
+  const res = db.exec(
+    `SELECT title, "desc", author_name, play_count, like_count, comment_count, created_at
+     FROM crawl_content WHERE platform = ? AND created_at >= ?
+     ORDER BY play_count DESC
+     LIMIT 30`,
+    [platform || 'bili', dateThreshold]
+  )
+  if (!res.length) return []
+  return res[0].values.map((row) => ({
+    title: row[0],
+    desc: row[1],
+    authorName: row[2],
+    playCount: row[3],
+    likeCount: row[4],
+    commentCount: row[5],
+    createdAt: row[6],
+  }))
 }
 
 module.exports = {
   getDb, saveScript, getScript, listScripts,
   createConversation, updateConversationTitle, deleteConversation,
-  listConversations, addMessage, getMessages,
+  listConversations, addMessage, getMessages, deleteMessage,
   upsertMemory, getMemories,
   saveCrawlTask, updateCrawlTaskStatus, saveCrawlContentBatch, getCrawlTasks, getCrawlContent,
   saveCrawlCreatorsBatch, getCrawlCreators, getAllCrawlContent,
   saveCreator, getCreators, starCreator, pinCreator, deleteCreator, cleanOldData,
   getSourceList, getVideosBySource,
   categorizeVideo, categorizeVideoBatch, getAllCategories, getUncategorizedCount,
+  saveTopic, getSavedTopics, deleteSavedTopic, getTopContent, getRecentTrends,
 }

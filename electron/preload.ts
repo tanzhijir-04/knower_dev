@@ -33,13 +33,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   listCrawlTasks: () => ipcRenderer.invoke('crawler-tasks'),
   getCrawlContent: (taskId: number) => ipcRenderer.invoke('crawler-content', taskId),
   getCrawlCreators: (taskId: number) => ipcRenderer.invoke('crawler-creators', taskId),
-  analyzeVideoData: (platform: string) => ipcRenderer.invoke('analyze-video-data', platform),
+  analyzeVideoData: (platform: string, sourceUid?: string) => ipcRenderer.invoke('analyze-video-data', platform, sourceUid),
+  getAllCrawlContent: (platform?: string) => ipcRenderer.invoke('get-all-crawl-content', platform),
   // 来源
   getSources: (platform: string) => ipcRenderer.invoke('get-sources', platform),
   getVideosBySource: (platform: string, sourceUid: string) => ipcRenderer.invoke('get-videos-by-source', platform, sourceUid),
   // 创作者
   cleanOldData: () => ipcRenderer.invoke('clean-old-data'),
   getCreators: () => ipcRenderer.invoke('get-creators'),
+  deleteMessage: (id: number) => ipcRenderer.invoke('delete-message', id),
   starCreator: (uid: string) => ipcRenderer.invoke('star-creator', uid),
   pinCreator: (uid: string) => ipcRenderer.invoke('pin-creator', uid),
   deleteCreator: (uid: string) => ipcRenderer.invoke('delete-creator', uid),
@@ -48,4 +50,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   autoCategorize: (platform: string) => ipcRenderer.invoke('auto-categorize', platform),
   getCategories: (platform: string) => ipcRenderer.invoke('get-categories', platform),
   updateCategory: (contentId: string, category: string) => ipcRenderer.invoke('update-category', contentId, category),
+  // 灵感库
+  suggestTopics: (platform: string) => ipcRenderer.invoke('topics-suggest', platform),
+  getTopicTrends: (platform: string) => ipcRenderer.invoke('topics-trends', platform),
+  saveTopic: (topic: Record<string, unknown>) => ipcRenderer.invoke('topics-save', topic),
+  getSavedTopics: (platform?: string) => ipcRenderer.invoke('topics-saved', platform),
+  sendTopicToChat: (topic: Record<string, unknown>) => ipcRenderer.invoke('topic-to-chat', topic),
+  onTopicToChat: (callback: (event: string) => void) => {
+    const handler = (_event: unknown, data: string) => callback(data)
+    ipcRenderer.on('topic-to-chat-event', handler)
+    return () => ipcRenderer.removeListener('topic-to-chat-event', handler)
+  },
 })
