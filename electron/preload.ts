@@ -1,13 +1,19 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
 contextBridge.exposeInMainWorld('electronAPI', {
+  // 平台信息
+  platform: process.platform,
+  // 窗口控制
+  minimizeWindow: () => ipcRenderer.invoke('window-minimize'),
+  maximizeWindow: () => ipcRenderer.invoke('window-maximize'),
+  closeWindow: () => ipcRenderer.invoke('window-close'),
   // 设置
   getStore: (key: string) => ipcRenderer.invoke('get-store', key),
   getStoreAll: () => ipcRenderer.invoke('get-store-all'),
   setStore: (key: string, value: unknown) => ipcRenderer.invoke('set-store', key, value),
   // Agent
-  runAgent: (script: string, platforms: string[]) =>
-    ipcRenderer.invoke('agent-run', script, platforms),
+  runAgent: (script: string, platforms: string[], conversationId?: number) =>
+    ipcRenderer.invoke('agent-run', script, platforms, conversationId),
   stopAgent: () => ipcRenderer.invoke('agent-stop'),
   submitAgentForm: (data: Record<string, string>) => ipcRenderer.invoke('agent-submit-form', data),
   onAgentEvent: (callback: (event: string) => void) => {
@@ -46,6 +52,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   cleanOldData: () => ipcRenderer.invoke('clean-old-data'),
   getCreators: () => ipcRenderer.invoke('get-creators'),
   deleteMessage: (id: number) => ipcRenderer.invoke('delete-message', id),
+  searchMessages: (query: string) => ipcRenderer.invoke('search-messages', query),
   starCreator: (uid: string) => ipcRenderer.invoke('star-creator', uid),
   pinCreator: (uid: string) => ipcRenderer.invoke('pin-creator', uid),
   deleteCreator: (uid: string) => ipcRenderer.invoke('delete-creator', uid),

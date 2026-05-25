@@ -5,24 +5,51 @@ export default {
   theme: {
     extend: {
       colors: {
+        // 核心
         primary: 'var(--primary)',
+        'primary-active': 'var(--primary-active)',
         'on-primary': 'var(--on-primary)',
-        'primary-container': '#4ade80',
-        background: 'var(--bg)',
+
+        // 画布
+        canvas: 'var(--canvas)',
+        'canvas-soft': 'var(--canvas-soft)',
+
+        // 表面
         surface: 'var(--surface)',
+        'surface-strong': 'var(--surface-strong)',
         'surface-low': 'var(--surface-low)',
-        'surface-container': 'var(--surface-container)',
-        'surface-high': 'var(--surface-high)',
-        'surface-highest': 'var(--surface-highest)',
-        'on-surface': 'var(--on-surface)',
-        'on-surface-variant': 'var(--on-surface-variant)',
-        outline: 'var(--outline)',
-        'outline-variant': 'var(--outline-variant)',
-        sidebar: 'var(--sidebar)',
-        border: 'var(--border)',
-        body: 'var(--body-text)',
+
+        // 发丝线
+        hairline: 'var(--hairline)',
+        'hairline-soft': 'var(--hairline-soft)',
+        'hairline-strong': 'var(--hairline-strong)',
+
+        // 文字
         ink: 'var(--ink)',
-        mute: 'var(--mute)',
+        body: 'var(--body)',
+        'body-strong': 'var(--ink)',
+        muted: 'var(--muted)',
+        'muted-soft': 'var(--muted-soft)',
+
+        // AI 时间线
+        'timeline-thinking': 'var(--timeline-thinking)',
+        'timeline-grep': 'var(--timeline-grep)',
+        'timeline-read': 'var(--timeline-read)',
+        'timeline-edit': 'var(--timeline-edit)',
+        'timeline-done': 'var(--timeline-done)',
+
+        // 语义
+        'semantic-success': 'var(--semantic-success)',
+        'semantic-error': 'var(--semantic-error)',
+
+        // 兼容旧名
+        background: 'var(--canvas)',
+        'on-surface': 'var(--ink)',
+        'on-surface-variant': 'var(--body)',
+        'outline-variant': 'var(--hairline)',
+        border: 'var(--hairline)',
+        mute: 'var(--muted)',
+        sidebar: 'var(--canvas-soft)',
       },
       fontFamily: {
         sans: [
@@ -31,21 +58,31 @@ export default {
           '-apple-system',
           'BlinkMacSystemFont',
           'Segoe UI',
-          'Roboto',
-          'Helvetica Neue',
-          'Arial',
           'sans-serif',
         ],
-        display: ['Source Serif 4', 'Georgia', 'serif'],
-        mono: ['JetBrains Mono', 'Cascadia Code', 'Fira Code', 'Consolas', 'monospace'],
+        mono: ['JetBrains Mono', 'Cascadia Code', 'Consolas', 'monospace'],
       },
       spacing: {
+        xxs: '4px',
+        xs: '8px',
+        sm: '12px',
+        base: '16px',
+        md: '20px',
+        lg: '24px',
+        xl: '32px',
+        xxl: '48px',
+        section: '80px',
         sidebar: '56px',
       },
       borderRadius: {
-        DEFAULT: '0.25rem',
-        lg: '0.5rem',
-        xl: '0.75rem',
+        none: '0px',
+        xs: '4px',
+        sm: '6px',
+        md: '8px',
+        lg: '12px',
+        xl: '16px',
+        pill: '9999px',
+        full: '9999px',
       },
     },
   },

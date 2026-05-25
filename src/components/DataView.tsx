@@ -1,5 +1,13 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import type { CrawlContent, VideoAnalysis, SourceInfo, CreatorInfo } from '../types/electron'
+import { usePlatform } from '../contexts/PlatformContext'
+import TrendChart from './data/TrendChart'
+import CategoryChart from './data/CategoryChart'
+import TimeChart from './data/TimeChart'
+import RadarChart from './data/RadarChart'
+import ScatterChart from './data/ScatterChart'
+import VideoDetailPanel from './data/VideoDetailPanel'
+import ExportMenu from './data/ExportMenu'
 
 type Mode = 'search' | 'creator'
 
@@ -17,12 +25,39 @@ function formatDate(s: string) {
 }
 
 // ============================================================
+//  数据维度定义
+// ============================================================
+
+const DIMENSIONS = [
+  { key: 'play_count', label: '播放量', icon: 'play_circle' },
+  { key: 'like_count', label: '点赞数', icon: 'thumb_up' },
+  { key: 'comment_count', label: '评论数', icon: 'comment' },
+  { key: 'share_count', label: '分享数', icon: 'share' },
+  { key: 'total_fans', label: '粉丝数', icon: 'group' },
+  { key: 'favorite_count', label: '收藏数', icon: 'bookmark' },
+  { key: 'coin_count', label: '投币数', icon: 'paid' },
+  { key: 'danmaku', label: '弹幕数', icon: 'subtitles' },
+  { key: 'engagement_rate', label: '互动率', icon: 'trending_up' },
+  { key: 'publish_time', label: '发布时间', icon: 'schedule' },
+  { key: 'category', label: '内容分类', icon: 'category' },
+  { key: 'title_length', label: '标题长度', icon: 'text_fields' },
+]
+
+const CHART_TABS = [
+  { key: 'trend', label: '播放趋势', icon: 'show_chart' },
+  { key: 'category', label: '分类占比', icon: 'pie_chart' },
+  { key: 'time', label: '发布时间', icon: 'schedule' },
+  { key: 'radar', label: '综合评分', icon: 'radar' },
+  { key: 'scatter', label: '标题分析', icon: 'scatter_plot' },
+]
+
+// ============================================================
 //  头像组件（带 fallback）
 // ============================================================
 
 function Avatar({ src, name, size = 32 }: { src?: string; name: string; size?: number }) {
   if (src) {
-    return <img src={src} alt={name} style={{ width: size, height: size }} className="rounded-full object-cover border border-outline-variant shrink-0" />
+    return <img src={src} alt={name} style={{ width: size, height: size }} className="rounded-full object-cover border border-hairline shrink-0" />
   }
   return (
     <div
@@ -46,16 +81,16 @@ function ProgressBar({ status, logs }: { status: string; logs?: string[] }) {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [logs?.length])
   return (
-    <div className="bg-surface-container rounded-xl px-5 py-4">
+    <div className="bg-canvas-soft rounded-xl px-5 py-4">
       <div className="flex items-center gap-3 mb-2">
-        {isDone ? (<span className="material-symbols-outlined text-[20px] text-green-400">check_circle</span>) : isFailed ? (<span className="material-symbols-outlined text-[20px] text-red-400">error</span>) : (<div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />)}
-        <span className="text-sm text-on-surface font-medium">{status}</span>
+        {isDone ? (<span className="material-symbols-outlined text-[20px] text-semantic-success">check_circle</span>) : isFailed ? (<span className="material-symbols-outlined text-[20px] text-semantic-error">error</span>) : (<div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />)}
+        <span className="text-sm text-ink font-medium">{status}</span>
       </div>
       {logs && logs.length > 0 && (
-        <div className="mt-2 bg-[#0a0f0a] rounded-lg p-3 max-h-[200px] overflow-auto font-mono text-[11px] leading-relaxed">
+        <div className="mt-2 bg-ink/90 rounded-lg p-3 max-h-[200px] overflow-auto font-mono text-[11px] leading-relaxed">
           {logs.map((line, i) => (
-            <div key={i} className="text-green-400/80">
-              <span className="text-mute/50 mr-2">{String(i + 1).padStart(3, ' ')}</span>
+            <div key={i} className="text-semantic-success/80">
+              <span className="text-muted/50 mr-2">{String(i + 1).padStart(3, ' ')}</span>
               {line}
             </div>
           ))}
@@ -67,26 +102,67 @@ function ProgressBar({ status, logs }: { status: string; logs?: string[] }) {
 }
 
 // ============================================================
-//  概览卡片
+//  概览卡片（支持维度选择 + 粉丝数）
 // ============================================================
 
-function OverviewCards({ overview }: { overview: VideoAnalysis['overview'] }) {
-  const cards = [
-    { label: '视频总数', value: overview.totalVideos, icon: 'movie' },
-    { label: '总播放量', value: overview.totalPlay, icon: 'play_circle' },
-    { label: '总点赞数', value: overview.totalLike, icon: 'thumb_up' },
-    { label: '平均播放', value: overview.avgPlay, icon: 'trending_up' },
+function OverviewCards({ overview, selectedDimensions, fans }: {
+  overview: VideoAnalysis['overview']
+  selectedDimensions: string[]
+  fans?: number
+}) {
+  const allCards = [
+    { key: 'play_count', label: '总播放量', value: overview.totalPlay, icon: 'play_circle' },
+    { key: 'like_count', label: '总点赞数', value: overview.totalLike, icon: 'thumb_up' },
+    { key: 'comment_count', label: '总评论数', value: overview.totalComment, icon: 'comment' },
+    { key: 'share_count', label: '总分享数', value: overview.totalShare, icon: 'share' },
+    { key: 'total_fans', label: '粉丝数', value: fans || 0, icon: 'group' },
+    { key: 'favorite_count', label: '总收藏数', value: overview.totalFavorite, icon: 'bookmark' },
+    { key: 'coin_count', label: '总投币数', value: overview.totalCoin, icon: 'paid' },
+    { key: 'danmaku', label: '总弹幕数', value: overview.totalDanmaku, icon: 'subtitles' },
+    { key: 'engagement_rate', label: '平均互动率', value: overview.avgEngagement, icon: 'analytics', suffix: '%' },
   ]
+  const cards = allCards.filter(c => selectedDimensions.includes(c.key))
+  if (cards.length === 0) return null
   return (
-    <div className="grid grid-cols-4 gap-3">
+    <div className={`grid gap-3 ${cards.length <= 4 ? 'grid-cols-4' : cards.length <= 6 ? 'grid-cols-3' : 'grid-cols-4'}`}>
       {cards.map(c => (
-        <div key={c.label} className="bg-surface-container rounded-xl px-4 py-3">
-          <div className="flex items-center gap-2 mb-1">
-            <span className="material-symbols-outlined text-[16px] text-primary">{c.icon}</span>
-            <span className="text-[11px] text-mute">{c.label}</span>
+        <div key={c.key} className="overview-card">
+          <div className="flex items-center gap-1.5 mb-1">
+            <span className="material-symbols-outlined text-[14px] text-primary">{c.icon}</span>
+            <span className="text-[11px] text-muted">{c.label}</span>
           </div>
-          <p className="text-xl font-semibold text-on-surface">{formatNumber(c.value)}</p>
+          <p className="text-xl font-semibold text-ink">
+            {formatNumber(c.value)}{'suffix' in c ? c.suffix : ''}
+          </p>
         </div>
+      ))}
+    </div>
+  )
+}
+
+// ============================================================
+//  维度选择器
+// ============================================================
+
+function DimensionSelector({ selected, onChange }: { selected: string[]; onChange: (dims: string[]) => void }) {
+  const toggle = (key: string) => {
+    onChange(selected.includes(key) ? selected.filter(d => d !== key) : [...selected, key])
+  }
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {DIMENSIONS.map(d => (
+        <button
+          key={d.key}
+          onClick={() => toggle(d.key)}
+          className={`flex items-center gap-1 px-2.5 py-1 text-[11px] rounded-full transition-colors ${
+            selected.includes(d.key)
+              ? 'bg-primary/15 text-primary border border-primary/30'
+              : 'bg-canvas-soft text-muted border border-hairline/30 hover:border-hairline'
+          }`}
+        >
+          <span className="material-symbols-outlined text-[12px]">{d.icon}</span>
+          {d.label}
+        </button>
       ))}
     </div>
   )
@@ -98,19 +174,19 @@ function OverviewCards({ overview }: { overview: VideoAnalysis['overview'] }) {
 
 function ContentPatternsCard({ analysis }: { analysis: VideoAnalysis }) {
   return (
-    <div className="bg-surface-container rounded-xl p-5">
-      <h3 className="text-sm font-medium text-on-surface mb-4 flex items-center gap-2">
+    <div className="bg-canvas-soft rounded-xl p-5">
+      <h3 className="text-sm font-medium text-ink mb-4 flex items-center gap-2">
         <span className="material-symbols-outlined text-[18px] text-primary">psychology</span>
         内容规律
       </h3>
       {analysis.topTopics && analysis.topTopics.length > 0 && (
         <div className="mb-4">
-          <p className="text-[11px] text-mute mb-2">最佳选题方向（按平均播放排序）</p>
+          <p className="text-[11px] text-muted mb-2">最佳选题方向（按平均播放排序）</p>
           <div className="space-y-1.5">
             {analysis.topTopics.map((t, i) => (
               <div key={i} className="flex items-center gap-2">
-                <span className="w-5 h-5 rounded bg-surface-high flex items-center justify-center text-[10px] text-primary font-medium">{i + 1}</span>
-                <span className="text-xs text-on-surface flex-1">{t.topic}</span>
+                <span className="w-5 h-5 rounded bg-surface-strong flex items-center justify-center text-[10px] text-primary font-medium">{i + 1}</span>
+                <span className="text-xs text-ink flex-1">{t.topic}</span>
                 <span className="text-[10px] text-body">{t.count} 条</span>
                 <span className="text-[10px] text-primary">{formatNumber(t.avgPlay)} 播放</span>
               </div>
@@ -120,21 +196,21 @@ function ContentPatternsCard({ analysis }: { analysis: VideoAnalysis }) {
       )}
       {analysis.titlePatterns && (
         <div className="mb-4">
-          <p className="text-[11px] text-mute mb-1.5">标题特征</p>
-          <p className="text-xs text-on-surface leading-relaxed">{analysis.titlePatterns}</p>
+          <p className="text-[11px] text-muted mb-1.5">标题特征</p>
+          <p className="text-xs text-ink leading-relaxed">{analysis.titlePatterns}</p>
         </div>
       )}
       <div className="grid grid-cols-2 gap-3">
         {analysis.bestDuration && (
-          <div className="bg-surface-high rounded-lg px-3 py-2">
-            <p className="text-[10px] text-mute mb-0.5">最佳时长</p>
-            <p className="text-xs text-on-surface font-medium">{analysis.bestDuration}</p>
+          <div className="bg-surface-strong rounded-lg px-3 py-2">
+            <p className="text-[10px] text-muted mb-0.5">最佳时长</p>
+            <p className="text-xs text-ink font-medium">{analysis.bestDuration}</p>
           </div>
         )}
         {analysis.bestTime && (
-          <div className="bg-surface-high rounded-lg px-3 py-2">
-            <p className="text-[10px] text-mute mb-0.5">最佳发布时间</p>
-            <p className="text-xs text-on-surface font-medium">{analysis.bestTime}</p>
+          <div className="bg-surface-strong rounded-lg px-3 py-2">
+            <p className="text-[10px] text-muted mb-0.5">最佳发布时间</p>
+            <p className="text-xs text-ink font-medium">{analysis.bestTime}</p>
           </div>
         )}
       </div>
@@ -150,14 +226,14 @@ function EngagementTable({ items }: { items: VideoAnalysis['topByEngagement'] })
   if (!items || items.length === 0) return null
   const maxRate = Math.max(...items.map(i => i.engagementRate))
   return (
-    <div className="bg-surface-container rounded-xl p-5">
-      <h3 className="text-sm font-medium text-on-surface mb-4 flex items-center gap-2">
+    <div className="bg-canvas-soft rounded-xl p-5">
+      <h3 className="text-sm font-medium text-ink mb-4 flex items-center gap-2">
         <span className="material-symbols-outlined text-[18px] text-primary">leaderboard</span>
         内容质量排行
       </h3>
       <table className="w-full text-xs">
         <thead>
-          <tr className="text-left text-mute border-b border-outline-variant">
+          <tr className="text-left text-muted border-b border-hairline">
             <th className="pb-2 w-8">#</th>
             <th className="pb-2">标题</th>
             <th className="pb-2 w-20 text-right">播放量</th>
@@ -169,18 +245,18 @@ function EngagementTable({ items }: { items: VideoAnalysis['topByEngagement'] })
             const barWidth = maxRate > 0 ? (item.engagementRate / maxRate) * 100 : 0
             const isTop3 = i < 3
             return (
-              <tr key={i} className={`border-b border-outline-variant/30 ${isTop3 ? 'bg-primary/5' : ''}`}>
+              <tr key={i} className={`border-b border-hairline/30 ${isTop3 ? 'bg-primary/5' : ''}`}>
                 <td className="py-2">
-                  <span className={`w-5 h-5 rounded flex items-center justify-center text-[10px] font-medium ${isTop3 ? 'bg-primary/20 text-primary' : 'text-mute'}`}>{i + 1}</span>
+                  <span className={`w-5 h-5 rounded flex items-center justify-center text-[10px] font-medium ${isTop3 ? 'bg-primary/20 text-primary' : 'text-muted'}`}>{i + 1}</span>
                 </td>
-                <td className="py-2 text-on-surface max-w-[200px] truncate">
+                <td className="py-2 text-ink max-w-[200px] truncate">
                   {item.title}
                   {isTop3 && <span className="ml-1.5 text-[9px] text-primary">高质量方向</span>}
                 </td>
                 <td className="py-2 text-right text-body">{formatNumber(item.playCount)}</td>
                 <td className="py-2">
                   <div className="flex items-center gap-2">
-                    <div className="flex-1 h-1.5 bg-surface-high rounded-full overflow-hidden">
+                    <div className="flex-1 h-1.5 bg-surface-strong rounded-full overflow-hidden">
                       <div className="h-full bg-primary rounded-full" style={{ width: `${barWidth}%` }} />
                     </div>
                     <span className="text-[10px] text-primary w-12 text-right">{item.engagementRate}%</span>
@@ -203,8 +279,8 @@ function SuggestionsCard({ suggestions, videoCount }: { suggestions: string[]; v
   if (!suggestions || suggestions.length === 0) return null
   const icons = ['lightbulb', 'edit_note', 'schedule']
   return (
-    <div className="bg-surface-container rounded-xl p-5">
-      <h3 className="text-sm font-medium text-on-surface mb-4 flex items-center gap-2">
+    <div className="bg-canvas-soft rounded-xl p-5">
+      <h3 className="text-sm font-medium text-ink mb-4 flex items-center gap-2">
         <span className="material-symbols-outlined text-[18px] text-primary">tips_and_updates</span>
         下一步建议
       </h3>
@@ -215,8 +291,8 @@ function SuggestionsCard({ suggestions, videoCount }: { suggestions: string[]; v
               <span className="material-symbols-outlined text-[14px] text-primary">{icons[i] || 'arrow_right'}</span>
             </div>
             <div className="flex-1">
-              <p className="text-xs text-on-surface leading-relaxed">{s}</p>
-              <p className="text-[10px] text-mute mt-1">基于 {videoCount} 条视频的数据分析</p>
+              <p className="text-xs text-ink leading-relaxed">{s}</p>
+              <p className="text-[10px] text-muted mt-1">基于 {videoCount} 条视频的数据分析</p>
             </div>
           </div>
         ))}
@@ -246,28 +322,28 @@ function ContextMenu({
   const isCreator = source.type === 'creator'
   return (
     <div
-      className="fixed z-50 bg-surface-low border border-outline-variant rounded-xl shadow-xl py-1 min-w-[160px]"
+      className="fixed z-50 bg-canvas-soft border border-hairline rounded-xl shadow-xl py-1 min-w-[160px]"
       style={{ left: x, top: y }}
       onClick={e => e.stopPropagation()}
     >
       {isCreator && (
         <>
-          <button onClick={() => { onStar(); onClose() }} className="w-full px-3 py-2 text-left text-xs text-on-surface hover:bg-surface-container flex items-center gap-2">
-            <span className={source.isStarred ? 'text-yellow-500' : ''}>{source.isStarred ? '★' : '☆'}</span>
+          <button onClick={() => { onStar(); onClose() }} className="w-full px-3 py-2 text-left text-xs text-ink hover:bg-canvas-soft flex items-center gap-2">
+            <span className={source.isStarred ? 'text-primary' : ''}>{source.isStarred ? '★' : '☆'}</span>
             {source.isStarred ? '取消收藏' : '收藏'}
           </button>
-          <button onClick={() => { onPin(); onClose() }} className="w-full px-3 py-2 text-left text-xs text-on-surface hover:bg-surface-container flex items-center gap-2">
-            <span className={source.isPinned ? 'text-green-500' : ''}>{source.isPinned ? '📌' : '📍'}</span>
+          <button onClick={() => { onPin(); onClose() }} className="w-full px-3 py-2 text-left text-xs text-ink hover:bg-canvas-soft flex items-center gap-2">
+            <span className={source.isPinned ? 'text-semantic-success' : ''}>{source.isPinned ? '📌' : '📍'}</span>
             {source.isPinned ? '取消置顶' : '置顶'}
           </button>
-          <div className="h-px bg-outline-variant mx-2 my-1" />
+          <div className="h-px bg-hairline mx-2 my-1" />
         </>
       )}
-      <button onClick={() => { onExport(); onClose() }} className="w-full px-3 py-2 text-left text-xs text-on-surface hover:bg-surface-container flex items-center gap-2">
+      <button onClick={() => { onExport(); onClose() }} className="w-full px-3 py-2 text-left text-xs text-ink hover:bg-canvas-soft flex items-center gap-2">
         <span>📦</span> 导出数据
       </button>
-      <div className="h-px bg-outline-variant mx-2 my-1" />
-      <button onClick={() => { onDelete(); onClose() }} className="w-full px-3 py-2 text-left text-xs text-red-400 hover:bg-red-500/10 flex items-center gap-2">
+      <div className="h-px bg-hairline mx-2 my-1" />
+      <button onClick={() => { onDelete(); onClose() }} className="w-full px-3 py-2 text-left text-xs text-semantic-error hover:bg-semantic-error/10 flex items-center gap-2">
         <span>🗑️</span> 删除数据
       </button>
     </div>
@@ -304,7 +380,7 @@ function Sidebar({
     if (items.length === 0) return null
     return (
       <div className="mb-1">
-        <div className="text-[10px] text-mute uppercase tracking-wider px-4 py-2 flex items-center gap-1.5">
+        <div className="text-[10px] text-muted uppercase tracking-wider px-4 py-2 flex items-center gap-1.5">
           <span className="material-symbols-outlined text-[12px]">{icon}</span>
           {title}
         </div>
@@ -322,30 +398,27 @@ function Sidebar({
   }
 
   return (
-    <div className="w-60 bg-surface-low border-r border-outline-variant flex flex-col shrink-0">
-      {/* 搜索框 */}
+    <div className="w-60 bg-canvas-soft border-r border-hairline flex flex-col shrink-0">
       <div className="p-2">
         <div className="relative">
-          <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-[16px] text-mute">search</span>
+          <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-[16px] text-muted">search</span>
           <input
             value={searchQuery}
             onChange={e => onSearchChange(e.target.value)}
             placeholder="搜索来源..."
-            className="w-full bg-surface-container rounded-lg pl-8 pr-3 py-2 text-xs text-on-surface placeholder:text-mute outline-none focus:ring-1 focus:ring-primary/50"
+            className="w-full bg-canvas-soft rounded-lg pl-8 pr-3 py-2 text-xs text-ink placeholder:text-muted outline-none focus:ring-1 focus:ring-primary/50"
           />
         </div>
       </div>
 
-      {/* 列表 */}
       <div className="flex-1 overflow-auto px-1">
         {renderGroup('置顶', 'push_pin', pinned)}
         {renderGroup('收藏', 'star', starred)}
         {renderGroup('创作者', 'person', creators)}
         {renderGroup('关键词', 'search', keywords)}
 
-        {/* 全部 */}
         <div className="mb-1">
-          <div className="text-[10px] text-mute uppercase tracking-wider px-4 py-2 flex items-center gap-1.5">
+          <div className="text-[10px] text-muted uppercase tracking-wider px-4 py-2 flex items-center gap-1.5">
             <span className="material-symbols-outlined text-[12px]">database</span>
             全部
           </div>
@@ -353,21 +426,20 @@ function Sidebar({
             onClick={() => onSelect('all')}
             className={`w-full flex items-center gap-3 px-3 py-2 mx-1 rounded-lg transition-colors text-left ${
               selectedSource === 'all'
-                ? 'bg-surface-container border-l-2 border-primary'
-                : 'hover:bg-surface-container/50'
+                ? 'bg-canvas-soft border-l-2 border-primary'
+                : 'hover:bg-canvas-soft/50'
             }`}
           >
-            <div className="w-8 h-8 rounded-full bg-surface-container flex items-center justify-center">
-              <span className="material-symbols-outlined text-[16px] text-mute">analytics</span>
+            <div className="w-8 h-8 rounded-full bg-canvas-soft flex items-center justify-center">
+              <span className="material-symbols-outlined text-[16px] text-muted">analytics</span>
             </div>
-            <span className="text-xs text-on-surface flex-1 truncate">全部数据</span>
-            <span className="text-[10px] text-mute">{totalCount}</span>
+            <span className="text-xs text-ink flex-1 truncate">全部数据</span>
+            <span className="text-[10px] text-muted">{totalCount}</span>
           </button>
         </div>
       </div>
 
-      {/* 底部按钮 */}
-      <div className="p-2 border-t border-outline-variant flex gap-1">
+      <div className="p-2 border-t border-hairline flex gap-1">
         <button
           onClick={onNewCrawl}
           className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-primary/10 text-primary text-xs hover:bg-primary/20 transition-colors"
@@ -377,7 +449,7 @@ function Sidebar({
         </button>
         <button
           onClick={onMoreMenu}
-          className="px-2 py-2 rounded-lg text-mute hover:bg-surface-container transition-colors"
+          className="px-2 py-2 rounded-lg text-muted hover:bg-canvas-soft transition-colors"
         >
           <span className="material-symbols-outlined text-[18px]">more_horiz</span>
         </button>
@@ -395,13 +467,13 @@ function SidebarItem({ source, isSelected, onClick, onContextMenu }: {
       onContextMenu={onContextMenu}
       className={`w-full flex items-center gap-3 px-3 py-2 mx-1 rounded-lg transition-colors text-left group ${
         isSelected
-          ? 'bg-surface-container border-l-2 border-primary'
-          : 'hover:bg-surface-container/50'
+          ? 'bg-canvas-soft border-l-2 border-primary'
+          : 'hover:bg-canvas-soft/50'
       }`}
     >
       <Avatar src={source.avatarUrl} name={source.sourceName} size={32} />
-      <span className="text-xs text-on-surface flex-1 truncate">{source.sourceName}</span>
-      <span className="text-[10px] text-mute">{source.count}</span>
+      <span className="text-xs text-ink flex-1 truncate">{source.sourceName}</span>
+      <span className="text-[10px] text-muted">{source.count}</span>
     </button>
   )
 }
@@ -415,7 +487,6 @@ export default function DataView() {
   const [sources, setSources] = useState<SourceInfo[]>([])
   const [videos, setVideos] = useState<CrawlContent[]>([])
   const [analysis, setAnalysis] = useState<VideoAnalysis | null>(null)
-  const [showVideos, setShowVideos] = useState(false)
   const [mode, setMode] = useState<Mode>('search')
   const [crawlKeyword, setCrawlKeyword] = useState('')
   const [crawlUid, setCrawlUid] = useState('')
@@ -423,21 +494,31 @@ export default function DataView() {
   const [analyzing, setAnalyzing] = useState(false)
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
-  // 分类
   const [selectedCategory, setSelectedCategory] = useState('')
   const [categorizing, setCategorizing] = useState(false)
   const [categorizeStatus, setCategorizeStatus] = useState('')
-  // 进度
   const [crawlStatus, setCrawlStatus] = useState('')
   const [crawlLogs, setCrawlLogs] = useState<string[]>([])
   const [aiStatus, setAiStatus] = useState('')
-  // 上下文菜单
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; source: SourceInfo } | null>(null)
   const [moreMenuOpen, setMoreMenuOpen] = useState(false)
-  // AI 分析缓存
   const analysisCache = useRef<Map<string, { data: VideoAnalysis; timestamp: number }>>(new Map())
   const cleanupRef = useRef<(() => void) | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const { isWindows } = usePlatform()
+
+  // 新增状态
+  const [selectedDimensions, setSelectedDimensions] = useState<string[]>([
+    'play_count', 'like_count', 'comment_count', 'total_fans', 'engagement_rate',
+  ])
+  const [activeChart, setActiveChart] = useState('trend')
+  const [selectedVideo, setSelectedVideo] = useState<CrawlContent | null>(null)
+
+  // 表格排序/筛选/分页
+  const [sortField, setSortField] = useState('playCount')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+  const [tablePage, setTablePage] = useState(0)
+  const pageSize = 20
 
   const api = window.electronAPI
 
@@ -451,9 +532,7 @@ export default function DataView() {
           setCrawlStatus(`正在爬取 ${evt.platform === 'bili' ? 'B站' : evt.platform} 数据...`)
           setCrawlLogs(['启动浏览器，加载页面...'])
         } else if (evt.type === 'progress') {
-          if (evt.message) {
-            setCrawlLogs(prev => [...prev, evt.message])
-          }
+          if (evt.message) setCrawlLogs(prev => [...prev, evt.message])
         } else if (evt.type === 'done') {
           setCrawlStatus('爬取完成')
           setCrawlLogs(prev => [...prev, `爬取完成，共 ${evt.count || 0} 条数据`])
@@ -469,7 +548,6 @@ export default function DataView() {
     return () => { unsubscribe() }
   }, [api])
 
-  // 加载来源列表
   const loadSources = useCallback(async () => {
     if (!api?.getSources) return
     try {
@@ -480,7 +558,6 @@ export default function DataView() {
 
   useEffect(() => { loadSources() }, [loadSources])
 
-  // 加载视频数据
   const loadVideos = useCallback(async () => {
     if (!api) return
     setLoading(true)
@@ -498,21 +575,55 @@ export default function DataView() {
 
   useEffect(() => { loadVideos() }, [loadVideos])
 
-  // 从视频数据计算本地统计（不调 LLM）
+  // 获取粉丝数
+  const fansCount = useMemo(() => {
+    if (selectedSource === 'all') return undefined
+    const src = sources.find(s => s.sourceUid === selectedSource)
+    return src?.totalFans || undefined
+  }, [sources, selectedSource])
+
   const localStats = useMemo(() => {
     if (videos.length === 0) return null
     const totalPlay = videos.reduce((s, v) => s + v.playCount, 0)
     const totalLike = videos.reduce((s, v) => s + v.likeCount, 0)
     const totalComment = videos.reduce((s, v) => s + v.commentCount, 0)
     const totalShare = videos.reduce((s, v) => s + v.shareCount, 0)
+    const totalCoin = videos.reduce((s, v) => {
+      const raw = v.rawJson || {}
+      return s + (parseInt(raw.video_coin_count) || 0)
+    }, 0)
+    const totalFavorite = videos.reduce((s, v) => {
+      const raw = v.rawJson || {}
+      return s + (parseInt(raw.video_favorite_count) || 0)
+    }, 0)
+    const totalDanmaku = videos.reduce((s, v) => {
+      const raw = v.rawJson || {}
+      return s + (parseInt(raw.video_danmaku) || 0)
+    }, 0)
+    const avgPlay = Math.round(totalPlay / videos.length)
+    const avgLike = Math.round(totalLike / videos.length)
+    const avgEngagement = videos.length > 0
+      ? videos.reduce((s, v) => {
+        const raw = v.rawJson || {}
+        const coin = parseInt(raw.video_coin_count) || 0
+        const fav = parseInt(raw.video_favorite_count) || 0
+        const danmaku = parseInt(raw.video_danmaku) || 0
+        return s + (v.playCount > 0 ? (v.likeCount + coin + fav + v.commentCount + danmaku) / v.playCount * 100 : 0)
+      }, 0) / videos.length
+      : 0
     return {
       overview: {
         totalVideos: videos.length,
         totalPlay,
         totalLike,
         totalComment,
-        avgPlay: Math.round(totalPlay / videos.length),
-        avgLike: Math.round(totalLike / videos.length),
+        totalShare,
+        totalCoin,
+        totalFavorite,
+        totalDanmaku,
+        avgPlay,
+        avgLike,
+        avgEngagement: Math.round(avgEngagement * 100) / 100,
       },
       topByEngagement: videos.map(v => {
         const raw = v.rawJson || {}
@@ -527,7 +638,6 @@ export default function DataView() {
     }
   }, [videos])
 
-  // 刷新分析缓存（爬取新数据后）
   const invalidateAnalysisCache = useCallback((sourceUid?: string) => {
     if (sourceUid) {
       analysisCache.current.delete(`${crawlPlatform}:${sourceUid}`)
@@ -536,10 +646,8 @@ export default function DataView() {
     }
   }, [crawlPlatform])
 
-  // AI 分析（手动触发）
   const runAIAnalysis = async () => {
     if (!api) return
-    // Pre-check: API key
     const settings: Record<string, unknown> = await api.getStoreAll().catch(() => ({}))
     if (!settings.apiKey) {
       setAiStatus('请先在设置页配置 API Key')
@@ -572,7 +680,6 @@ export default function DataView() {
     setAnalyzing(false)
   }
 
-  // AI 一键分类
   const runAutoCategorize = async () => {
     if (!api?.autoCategorize) return
     setCategorizing(true)
@@ -593,19 +700,37 @@ export default function DataView() {
     setCategorizing(false)
   }
 
-  // 手动修改分类
   const handleUpdateCategory = async (contentId: string, category: string) => {
     if (!api?.updateCategory) return
     await api.updateCategory(contentId, category)
     setVideos(prev => prev.map(v => v.contentId === contentId ? { ...v, category } : v))
   }
 
-  // 按分类筛选
   const filteredVideos = selectedCategory
     ? videos.filter(v => v.category === selectedCategory)
     : videos
 
-  // 爬取
+  const sortedVideos = useMemo(() => {
+    return [...filteredVideos].sort((a, b) => {
+      const getVal = (v: CrawlContent) => {
+        switch (sortField) {
+          case 'playCount': return v.playCount
+          case 'likeCount': return v.likeCount
+          case 'commentCount': return v.commentCount
+          case 'shareCount': return v.shareCount
+          case 'createdAt': return v.createdAt ? new Date(v.createdAt).getTime() : 0
+          default: return 0
+        }
+      }
+      const aVal = getVal(a)
+      const bVal = getVal(b)
+      return sortDir === 'desc' ? bVal - aVal : aVal - bVal
+    })
+  }, [filteredVideos, sortField, sortDir])
+
+  const pagedVideos = sortedVideos.slice(tablePage * pageSize, (tablePage + 1) * pageSize)
+  const totalPages = Math.ceil(sortedVideos.length / pageSize)
+
   const startCrawl = async () => {
     if (!api) return
     const input = mode === 'search' ? crawlKeyword.trim() : crawlUid.trim()
@@ -626,9 +751,7 @@ export default function DataView() {
       if (result.success) {
         invalidateAnalysisCache(result.sourceUid)
         await loadSources()
-        if (result.sourceUid) {
-          setSelectedSource(result.sourceUid)
-        }
+        if (result.sourceUid) setSelectedSource(result.sourceUid)
       } else {
         setCrawlStatus('爬取失败')
         setCrawlLogs(prev => [...prev, `失败: ${result.error || '未知错误'}`])
@@ -642,13 +765,11 @@ export default function DataView() {
     setAnalyzing(false)
   }
 
-  // 新建爬取
   const handleNewCrawl = () => {
     setMode('creator')
     setTimeout(() => inputRef.current?.focus(), 100)
   }
 
-  // 上下文菜单操作
   const handleStar = async (source: SourceInfo) => {
     if (!api?.starCreator) return
     await api.starCreator(source.sourceUid)
@@ -672,7 +793,6 @@ export default function DataView() {
   }
   const handleExportAll = async () => {
     if (!api?.exportSourceData) return
-    // 导出全部：逐个导出（简单方案）
     for (const s of sources) {
       if (s.sourceUid) await api.exportSourceData(s.sourceUid)
     }
@@ -683,108 +803,63 @@ export default function DataView() {
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      {/* 顶部操作栏 - 第一行：标题 + 模式切换 */}
-      <div className="px-6 py-3 border-b border-outline-variant shrink-0 flex items-center gap-3">
-        <h1 className="text-lg font-medium text-on-surface mr-2">数据分析</h1>
-
-        {/* 模式切换 */}
+      {/* 顶部操作栏 */}
+      <div className={`titlebar-drag h-12 px-6 shrink-0 flex items-center gap-3 ${isWindows ? '' : 'border-b border-hairline'}`}>
+        <h1 className="text-sm font-medium text-ink mr-2">数据分析</h1>
         <div className="flex gap-1">
-          <button
-            onClick={() => setMode('search')}
-            className={`px-3 py-1 text-[11px] rounded-full transition-colors ${
-              mode === 'search' ? 'bg-primary/20 text-primary' : 'bg-surface-container text-mute hover:text-on-surface'
-            }`}
-          >
+          <button onClick={() => setMode('search')}
+            className={`px-3 py-1 text-[11px] rounded-full transition-colors ${mode === 'search' ? 'bg-primary/20 text-primary' : 'bg-canvas-soft text-muted hover:text-ink'}`}>
             <span className="material-symbols-outlined text-[12px] align-[-2px] mr-1">search</span>关键词搜索
           </button>
-          <button
-            onClick={() => setMode('creator')}
-            className={`px-3 py-1 text-[11px] rounded-full transition-colors ${
-              mode === 'creator' ? 'bg-primary/20 text-primary' : 'bg-surface-container text-mute hover:text-on-surface'
-            }`}
-          >
+          <button onClick={() => setMode('creator')}
+            className={`px-3 py-1 text-[11px] rounded-full transition-colors ${mode === 'creator' ? 'bg-primary/20 text-primary' : 'bg-canvas-soft text-muted hover:text-ink'}`}>
             <span className="material-symbols-outlined text-[12px] align-[-2px] mr-1">person</span>用户主页
           </button>
         </div>
       </div>
 
-      {/* 顶部操作栏 - 第二行：平台选择 + 输入 + 操作按钮 */}
-      <div className="px-6 py-2 border-b border-outline-variant shrink-0 flex items-center gap-3">
-
-        {/* 输入区 */}
-        <select
-          value={crawlPlatform}
-          onChange={e => { setCrawlPlatform(e.target.value); setSelectedSource('all') }}
-          className="bg-surface-container border border-outline-variant rounded px-2 py-1.5 text-xs text-on-surface"
-        >
+      <div className="px-6 py-2 border-b border-hairline shrink-0 flex items-center gap-3">
+        <select value={crawlPlatform} onChange={e => { setCrawlPlatform(e.target.value); setSelectedSource('all') }}
+          className="bg-canvas-soft border border-hairline rounded px-2 py-1.5 text-xs text-ink">
           <option value="bili">B站</option>
           <option value="dy">抖音</option>
           <option value="xhs">小红书</option>
           <option value="wb">微博</option>
         </select>
-
         {mode === 'search' ? (
-          <input
-            ref={inputRef}
-            value={crawlKeyword}
-            onChange={e => setCrawlKeyword(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && startCrawl()}
-            placeholder="输入搜索关键词..."
-            disabled={isRunning}
-            className="flex-1 bg-surface-container border border-outline-variant rounded px-3 py-1.5 text-xs text-on-surface placeholder:text-mute disabled:opacity-50"
-          />
+          <input ref={inputRef} value={crawlKeyword} onChange={e => setCrawlKeyword(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && startCrawl()} placeholder="输入搜索关键词..." disabled={isRunning}
+            className="flex-1 bg-canvas-soft border border-hairline rounded px-3 py-1.5 text-xs text-ink placeholder:text-muted disabled:opacity-50" />
         ) : (
-          <input
-            ref={inputRef}
-            value={crawlUid}
-            onChange={e => setCrawlUid(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && startCrawl()}
-            placeholder="输入用户 UID（如 B站 space.bilibili.com/后面的数字）"
-            disabled={isRunning}
-            className="flex-1 bg-surface-container border border-outline-variant rounded px-3 py-1.5 text-xs text-on-surface placeholder:text-mute disabled:opacity-50"
-          />
+          <input ref={inputRef} value={crawlUid} onChange={e => setCrawlUid(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && startCrawl()} placeholder="输入用户 UID（如 B站 space.bilibili.com/后面的数字）" disabled={isRunning}
+            className="flex-1 bg-canvas-soft border border-hairline rounded px-3 py-1.5 text-xs text-ink placeholder:text-muted disabled:opacity-50" />
         )}
-
-        <button
-          onClick={startCrawl}
-          disabled={isRunning || !(mode === 'search' ? crawlKeyword : crawlUid).trim()}
-          className="px-4 py-1.5 bg-primary text-on-primary text-xs font-medium rounded hover:opacity-90 disabled:opacity-40"
-        >
+        <button onClick={startCrawl} disabled={isRunning || !(mode === 'search' ? crawlKeyword : crawlUid).trim()}
+          className="px-4 py-1.5 bg-primary text-on-primary text-xs font-medium rounded hover:opacity-90 disabled:opacity-40">
           {isRunning ? '处理中...' : '爬取'}
         </button>
-        <button
-          onClick={runAIAnalysis}
-          disabled={analyzing || videos.length === 0}
-          className="px-4 py-1.5 bg-surface-container border border-outline-variant text-on-surface text-xs rounded hover:bg-surface-high disabled:opacity-40"
-        >
+        <button onClick={runAIAnalysis} disabled={analyzing || videos.length === 0}
+          className="px-4 py-1.5 bg-canvas-soft border border-hairline text-ink text-xs rounded hover:bg-surface-strong disabled:opacity-40">
           <span className="material-symbols-outlined text-[12px] align-[-2px] mr-1">auto_awesome</span>
           {analyzing ? '分析中...' : 'AI 分析'}
         </button>
-        <button
-          onClick={runAutoCategorize}
-          disabled={categorizing || videos.length === 0}
-          className="px-4 py-1.5 bg-primary/10 border border-primary/30 text-primary text-xs rounded hover:bg-primary/20 disabled:opacity-40"
-        >
+        <button onClick={runAutoCategorize} disabled={categorizing || videos.length === 0}
+          className="px-4 py-1.5 bg-primary/10 border border-primary/30 text-primary text-xs rounded hover:bg-primary/20 disabled:opacity-40">
           <span className="material-symbols-outlined text-[12px] align-[-2px] mr-1">label</span>
           {categorizing ? '分类中...' : 'AI 一键分类'}
         </button>
       </div>
 
-      {/* 主体：侧边栏 + 内容区 */}
+      {/* 主体 */}
       <div className="flex flex-1 overflow-hidden">
-        {/* 侧边栏 */}
         <Sidebar
-          sources={sources}
-          selectedSource={selectedSource}
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          onSelect={setSelectedSource}
-          onNewCrawl={handleNewCrawl}
+          sources={sources} selectedSource={selectedSource} searchQuery={searchQuery}
+          onSearchChange={setSearchQuery} onSelect={setSelectedSource} onNewCrawl={handleNewCrawl}
           onContextMenu={(e, s) => setContextMenu({ x: e.clientX, y: e.clientY, source: s })}
           onMoreMenu={(e) => setMoreMenuOpen(!moreMenuOpen)}
         />
 
-        {/* 右侧内容区 */}
         <div className="flex-1 overflow-auto">
           {loading ? (
             <div className="flex flex-col items-center justify-center py-32">
@@ -793,59 +868,88 @@ export default function DataView() {
             </div>
           ) : videos.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-32">
-              <span className="material-symbols-outlined text-[48px] text-mute mb-4">analytics</span>
+              <span className="material-symbols-outlined text-[48px] text-muted mb-4">analytics</span>
               <p className="text-sm text-body">
                 {selectedSource === 'all' ? '还没有数据，输入关键词或用户 UID 开始爬取' : '该来源暂无数据'}
               </p>
             </div>
           ) : (
             <div className="p-6 space-y-5 max-w-[1100px]">
-              {/* 爬取进度 */}
               {crawlStatus && <ProgressBar status={crawlStatus} logs={crawlLogs} />}
-
-              {/* AI 分析进度 */}
               {aiStatus && <ProgressBar status={aiStatus} />}
-
-              {/* 分类状态 */}
               {categorizeStatus && (
                 <div className="bg-primary/5 border border-primary/20 rounded-xl px-4 py-3 flex items-center gap-2">
                   <span className="material-symbols-outlined text-[16px] text-primary">label</span>
-                  <span className="text-xs text-on-surface">{categorizeStatus}</span>
+                  <span className="text-xs text-ink">{categorizeStatus}</span>
                 </div>
               )}
 
-              {/* ===== 创作者详情头部 ===== */}
+              {/* 创作者详情头部 */}
               {currentSource && currentSource.type === 'creator' && (
-                <div className="bg-surface-container rounded-xl p-5 flex items-center gap-4">
+                <div className="bg-canvas-soft rounded-xl p-5 flex items-center gap-4">
                   <Avatar src={currentSource.avatarUrl} name={currentSource.sourceName} size={48} />
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
-                      <h2 className="text-lg font-medium text-on-surface">{currentSource.sourceName}</h2>
-                      {currentSource.isStarred ? <span className="text-yellow-500 text-sm">★</span> : null}
+                      <h2 className="text-lg font-medium text-ink">{currentSource.sourceName}</h2>
+                      {currentSource.isStarred ? <span className="text-primary text-sm">★</span> : null}
                       {currentSource.isPinned ? <span className="text-sm">📌</span> : null}
                     </div>
-                    <p className="text-[11px] text-mute">UID: {currentSource.sourceUid} · {currentSource.count} 个视频</p>
+                    <p className="text-[11px] text-muted">
+                      UID: {currentSource.sourceUid} · {currentSource.count} 个视频
+                      {currentSource.totalFans ? ` · ${formatNumber(currentSource.totalFans)} 粉丝` : ''}
+                    </p>
                   </div>
                 </div>
               )}
 
-              {/* ===== 关键词头部 ===== */}
+              {/* 关键词头部 */}
               {currentSource && currentSource.type === 'keyword' && (
-                <div className="bg-surface-container rounded-xl p-5 flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-full bg-surface-high flex items-center justify-center">
+                <div className="bg-canvas-soft rounded-xl p-5 flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-full bg-surface-strong flex items-center justify-center">
                     <span className="material-symbols-outlined text-[24px] text-primary">search</span>
                   </div>
                   <div>
-                    <h2 className="text-lg font-medium text-on-surface">{currentSource.sourceName}</h2>
-                    <p className="text-[11px] text-mute">关键词搜索 · {currentSource.count} 个视频</p>
+                    <h2 className="text-lg font-medium text-ink">{currentSource.sourceName}</h2>
+                    <p className="text-[11px] text-muted">关键词搜索 · {currentSource.count} 个视频</p>
                   </div>
                 </div>
               )}
 
-              {/* 概览卡片（本地统计，立即显示） */}
-              {localStats && <OverviewCards overview={localStats.overview} />}
+              {/* 数据维度选择器 */}
+              <div className="bg-canvas-soft rounded-xl px-4 py-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="material-symbols-outlined text-[14px] text-primary">tune</span>
+                  <span className="text-[11px] text-muted">数据维度</span>
+                </div>
+                <DimensionSelector selected={selectedDimensions} onChange={setSelectedDimensions} />
+              </div>
 
-              {/* AI 洞察面板（需要 LLM 分析） */}
+              {/* 概览卡片 */}
+              {localStats && <OverviewCards overview={localStats.overview} selectedDimensions={selectedDimensions} fans={fansCount || analysis?.fans} />}
+
+              {/* 图表 Tab */}
+              <div>
+                <div className="flex gap-1 mb-4">
+                  {CHART_TABS.map(c => (
+                    <button key={c.key} onClick={() => setActiveChart(c.key)}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] rounded-full transition-colors ${
+                        activeChart === c.key ? 'bg-primary/20 text-primary' : 'bg-canvas-soft text-muted hover:text-ink'
+                      }`}>
+                      <span className="material-symbols-outlined text-[14px]">{c.icon}</span>
+                      {c.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="chart-card">
+                  {activeChart === 'trend' && <TrendChart data={filteredVideos} />}
+                  {activeChart === 'category' && <CategoryChart data={filteredVideos} />}
+                  {activeChart === 'time' && <TimeChart data={filteredVideos} />}
+                  {activeChart === 'radar' && localStats && <RadarChart stats={{ ...localStats, topByEngagement: analysis?.topByEngagement }} />}
+                  {activeChart === 'scatter' && <ScatterChart data={filteredVideos} />}
+                </div>
+              </div>
+
+              {/* AI 洞察 */}
               {analysis?.topTopics && (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
                   <ContentPatternsCard analysis={analysis} />
@@ -853,23 +957,20 @@ export default function DataView() {
                 </div>
               )}
 
-              {/* 互动率排行（本地计算，立即显示） */}
+              {/* 互动率排行 */}
               {localStats && <EngagementTable items={localStats.topByEngagement} />}
 
-              {/* AI 分析按钮（未分析时显示） */}
+              {/* AI 分析按钮 */}
               {!analysis && videos.length > 0 && (
-                <button
-                  onClick={runAIAnalysis}
-                  disabled={analyzing}
-                  className="w-full bg-surface-container rounded-xl p-6 text-center hover:bg-surface-high transition-colors"
-                >
+                <button onClick={runAIAnalysis} disabled={analyzing}
+                  className="w-full bg-canvas-soft rounded-xl p-6 text-center hover:bg-surface-strong transition-colors">
                   <span className="material-symbols-outlined text-[32px] text-primary mb-3 block">
                     {analyzing ? 'hourglass_empty' : 'auto_awesome'}
                   </span>
-                  <p className="text-sm text-on-surface mb-1">
+                  <p className="text-sm text-ink mb-1">
                     {analyzing ? 'AI 正在分析数据...' : '点击「AI 分析」获取深度洞察'}
                   </p>
-                  <p className="text-[11px] text-mute">
+                  <p className="text-[11px] text-muted">
                     {analyzing ? '请稍候，正在分析选题方向、标题特征...' : '分析选题方向、标题特征、发布时间等规律'}
                   </p>
                 </button>
@@ -877,34 +978,22 @@ export default function DataView() {
 
               {/* 分类标签 */}
               {videos.length > 0 && (
-                <div className="bg-surface-container rounded-xl px-4 py-3">
+                <div className="bg-canvas-soft rounded-xl px-4 py-3">
                   <div className="flex items-center gap-2 mb-2">
                     <span className="material-symbols-outlined text-[14px] text-primary">category</span>
-                    <span className="text-[11px] text-mute">按分类筛选</span>
+                    <span className="text-[11px] text-muted">按分类筛选</span>
                   </div>
                   <div className="flex flex-wrap gap-1.5">
-                    <button
-                      onClick={() => setSelectedCategory('')}
-                      className={`px-2.5 py-1 text-[11px] rounded-full transition-colors ${
-                        selectedCategory === '' ? 'bg-primary text-on-primary' : 'bg-surface-high text-mute hover:text-on-surface'
-                      }`}
-                    >
+                    <button onClick={() => setSelectedCategory('')}
+                      className={`px-2.5 py-1 text-[11px] rounded-full transition-colors ${selectedCategory === '' ? 'bg-primary text-on-primary' : 'bg-surface-strong text-muted hover:text-ink'}`}>
                       全部（{videos.length}）
                     </button>
                     {(() => {
                       const catMap: Record<string, number> = {}
-                      for (const v of videos) {
-                        const c = v.category || '未分类'
-                        catMap[c] = (catMap[c] || 0) + 1
-                      }
+                      for (const v of videos) { const c = v.category || '未分类'; catMap[c] = (catMap[c] || 0) + 1 }
                       return Object.entries(catMap).sort((a, b) => b[1] - a[1]).map(([cat, cnt]) => (
-                        <button
-                          key={cat}
-                          onClick={() => setSelectedCategory(cat === selectedCategory ? '' : cat)}
-                          className={`px-2.5 py-1 text-[11px] rounded-full transition-colors ${
-                            cat === selectedCategory ? 'bg-primary text-on-primary' : 'bg-surface-high text-mute hover:text-on-surface'
-                          }`}
-                        >
+                        <button key={cat} onClick={() => setSelectedCategory(cat === selectedCategory ? '' : cat)}
+                          className={`px-2.5 py-1 text-[11px] rounded-full transition-colors ${cat === selectedCategory ? 'bg-primary text-on-primary' : 'bg-surface-strong text-muted hover:text-ink'}`}>
                           {cat}（{cnt}）
                         </button>
                       ))
@@ -913,60 +1002,92 @@ export default function DataView() {
                 </div>
               )}
 
-              {/* 视频列表 */}
-              {filteredVideos.length > 0 && (
-                <div className="bg-surface-container rounded-xl overflow-hidden">
-                  <button
-                    onClick={() => setShowVideos(!showVideos)}
-                    className="w-full flex items-center justify-between px-5 py-3 hover:bg-surface-high transition-colors"
-                  >
-                    <span className="text-sm font-medium text-on-surface flex items-center gap-2">
-                      <span className="material-symbols-outlined text-[18px] text-primary">video_library</span>
-                      完整视频列表（{filteredVideos.length}{selectedCategory ? ` / ${videos.length}` : ''} 条）
+              {/* 视频数据表格 */}
+              {sortedVideos.length > 0 && (
+                <div className="bg-surface rounded-xl border border-hairline/30 overflow-hidden">
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-hairline/20">
+                    <span className="text-sm font-medium text-ink flex items-center gap-2">
+                      <span className="material-symbols-outlined text-[16px] text-primary">video_library</span>
+                      数据列表（{sortedVideos.length} 条）
                     </span>
-                    <span className={`material-symbols-outlined text-[18px] text-mute transition-transform ${showVideos ? 'rotate-180' : ''}`}>
-                      expand_more
-                    </span>
-                  </button>
-                  {showVideos && (
-                    <div className="border-t border-outline-variant max-h-[400px] overflow-auto">
-                      <table className="w-full text-xs">
-                        <thead className="sticky top-0 bg-surface-low">
-                          <tr className="text-left text-mute">
-                            <th className="px-4 py-2 font-medium">#</th>
-                            <th className="px-4 py-2 font-medium">标题</th>
-                            <th className="px-4 py-2 font-medium w-20">作者</th>
-                            <th className="px-4 py-2 font-medium w-24 text-right">播放</th>
-                            <th className="px-4 py-2 font-medium w-20 text-right">点赞</th>
-                            <th className="px-4 py-2 font-medium w-16 text-right">评论</th>
-                            <th className="px-4 py-2 font-medium w-24">分类</th>
-                            <th className="px-4 py-2 font-medium w-24">发布时间</th>
+                    <div className="flex items-center gap-2">
+                      {/* 排序 */}
+                      <select value={sortField} onChange={e => { setSortField(e.target.value); setTablePage(0) }}
+                        className="bg-canvas-soft border border-hairline/30 rounded-lg px-2 py-1 text-[11px] text-ink">
+                        <option value="playCount">按播放量</option>
+                        <option value="likeCount">按点赞数</option>
+                        <option value="commentCount">按评论数</option>
+                        <option value="shareCount">按分享数</option>
+                        <option value="createdAt">按发布时间</option>
+                      </select>
+                      <button onClick={() => { setSortDir(d => d === 'desc' ? 'asc' : 'desc'); setTablePage(0) }}
+                        className="p-1.5 rounded-lg text-muted hover:text-ink hover:bg-canvas-soft">
+                        <span className="material-symbols-outlined text-[16px]">
+                          {sortDir === 'desc' ? 'arrow_downward' : 'arrow_upward'}
+                        </span>
+                      </button>
+                      {/* 分类筛选 */}
+                      <select value={selectedCategory} onChange={e => { setSelectedCategory(e.target.value); setTablePage(0) }}
+                        className="bg-canvas-soft border border-hairline/30 rounded-lg px-2 py-1 text-[11px] text-ink">
+                        <option value="">全部分类</option>
+                        {[...new Set(videos.map(v => v.category || '未分类'))].sort().map(cat => (
+                          <option key={cat} value={cat}>{cat}</option>
+                        ))}
+                      </select>
+                      <ExportMenu videos={sortedVideos} overview={localStats?.overview} analysis={analysis || undefined} sourceName={currentSource?.sourceName} />
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead className="sticky top-0 bg-canvas-soft">
+                        <tr className="text-left text-muted border-b border-hairline/30">
+                          <th className="px-4 py-2.5 w-8">#</th>
+                          <th className="px-4 py-2.5">标题</th>
+                          <th className="px-4 py-2.5 w-20">作者</th>
+                          <th className="px-4 py-2.5 w-20 text-right cursor-pointer hover:text-ink" onClick={() => { setSortField('playCount'); setSortDir('desc'); setTablePage(0) }}>播放 ↓</th>
+                          <th className="px-4 py-2.5 w-16 text-right cursor-pointer hover:text-ink" onClick={() => { setSortField('likeCount'); setSortDir('desc'); setTablePage(0) }}>点赞</th>
+                          <th className="px-4 py-2.5 w-16 text-right">评论</th>
+                          <th className="px-4 py-2.5 w-16 text-right">分享</th>
+                          <th className="px-4 py-2.5 w-24">分类</th>
+                          <th className="px-4 py-2.5 w-24">发布时间</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pagedVideos.map((v, i) => (
+                          <tr key={v.id} onClick={() => setSelectedVideo(v)}
+                            className="border-b border-hairline/20 hover:bg-canvas-soft/50 cursor-pointer">
+                            <td className="px-4 py-2.5 text-muted">{tablePage * pageSize + i + 1}</td>
+                            <td className="px-4 py-2.5 text-ink truncate max-w-[280px]">{v.title || '-'}</td>
+                            <td className="px-4 py-2.5 text-muted truncate">{v.authorName || '-'}</td>
+                            <td className="px-4 py-2.5 text-right font-medium text-ink">{formatNumber(v.playCount)}</td>
+                            <td className="px-4 py-2.5 text-right text-ink">{formatNumber(v.likeCount)}</td>
+                            <td className="px-4 py-2.5 text-right text-ink">{v.commentCount}</td>
+                            <td className="px-4 py-2.5 text-right text-ink">{v.shareCount}</td>
+                            <td className="px-4 py-2.5">
+                              <span className="px-2 py-0.5 bg-canvas-soft rounded-full text-[10px] text-muted">
+                                {v.category || '未分类'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-2.5 text-muted">{formatDate(v.createdAt)}</td>
                           </tr>
-                        </thead>
-                        <tbody>
-                          {filteredVideos.map((v, i) => (
-                            <tr key={v.id} className="border-t border-outline-variant/30 hover:bg-surface-high/50">
-                              <td className="px-4 py-2 text-mute">{i + 1}</td>
-                              <td className="px-4 py-2 text-on-surface max-w-xs truncate">{v.title || '-'}</td>
-                              <td className="px-4 py-2 text-body truncate">{v.authorName || '-'}</td>
-                              <td className="px-4 py-2 text-right text-on-surface">{formatNumber(v.playCount)}</td>
-                              <td className="px-4 py-2 text-right text-on-surface">{formatNumber(v.likeCount)}</td>
-                              <td className="px-4 py-2 text-right text-on-surface">{formatNumber(v.commentCount)}</td>
-                              <td className="px-4 py-2">
-                                <select
-                                  value={v.category || '未分类'}
-                                  onChange={e => handleUpdateCategory(v.contentId, e.target.value)}
-                                  className="bg-surface-high border border-outline-variant rounded px-1.5 py-0.5 text-[10px] text-on-surface max-w-[90px] truncate cursor-pointer hover:border-primary/50"
-                                >
-                                  <option value="未分类">未分类</option>
-                                  <option value={v.category || '未分类'}>{v.category || '未分类'}</option>
-                                </select>
-                              </td>
-                              <td className="px-4 py-2 text-mute">{formatDate(v.createdAt)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* 分页 */}
+                  {sortedVideos.length > pageSize && (
+                    <div className="flex items-center justify-between px-4 py-2.5 border-t border-hairline/20">
+                      <span className="text-[11px] text-muted">
+                        第 {tablePage + 1} / {totalPages} 页
+                      </span>
+                      <div className="flex gap-1">
+                        <button disabled={tablePage === 0} onClick={() => setTablePage(p => p - 1)}
+                          className="px-2 py-1 text-[11px] rounded bg-canvas-soft text-muted disabled:opacity-30">上一页</button>
+                        <button disabled={(tablePage + 1) * pageSize >= sortedVideos.length} onClick={() => setTablePage(p => p + 1)}
+                          className="px-2 py-1 text-[11px] rounded bg-canvas-soft text-muted disabled:opacity-30">下一页</button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -978,44 +1099,37 @@ export default function DataView() {
 
       {/* 上下文菜单 */}
       {contextMenu && (
-        <ContextMenu
-          x={contextMenu.x}
-          y={contextMenu.y}
-          source={contextMenu.source}
+        <ContextMenu x={contextMenu.x} y={contextMenu.y} source={contextMenu.source}
           onClose={() => setContextMenu(null)}
-          onStar={() => handleStar(contextMenu.source)}
-          onPin={() => handlePin(contextMenu.source)}
-          onExport={() => handleExport(contextMenu.source)}
-          onDelete={() => handleDelete(contextMenu.source)}
-        />
+          onStar={() => handleStar(contextMenu.source)} onPin={() => handlePin(contextMenu.source)}
+          onExport={() => handleExport(contextMenu.source)} onDelete={() => handleDelete(contextMenu.source)} />
       )}
 
       {/* 更多菜单 */}
       {moreMenuOpen && (
-        <div
-          className="fixed z-50 bg-surface-low border border-outline-variant rounded-xl shadow-xl py-1 min-w-[160px]"
-          style={{ bottom: 60, right: 20 }}
-          onClick={e => e.stopPropagation()}
-        >
-          <button onClick={() => { handleExportAll(); setMoreMenuOpen(false) }} className="w-full px-3 py-2 text-left text-xs text-on-surface hover:bg-surface-container flex items-center gap-2">
+        <div className="fixed z-50 bg-canvas-soft border border-hairline rounded-xl shadow-xl py-1 min-w-[160px]"
+          style={{ bottom: 60, right: 20 }} onClick={e => e.stopPropagation()}>
+          <button onClick={() => { handleExportAll(); setMoreMenuOpen(false) }}
+            className="w-full px-3 py-2 text-left text-xs text-ink hover:bg-canvas-soft flex items-center gap-2">
             <span>📦</span> 导出全部数据
           </button>
-          <div className="h-px bg-outline-variant mx-2 my-1" />
+          <div className="h-px bg-hairline mx-2 my-1" />
           <button onClick={async () => {
             if (!confirm('确定清空全部历史数据？此操作不可恢复。')) return
             if (api?.cleanOldData) await api.cleanOldData()
             setMoreMenuOpen(false)
             setSelectedSource('all')
             await loadSources()
-          }} className="w-full px-3 py-2 text-left text-xs text-red-400 hover:bg-red-500/10 flex items-center gap-2">
+          }} className="w-full px-3 py-2 text-left text-xs text-semantic-error hover:bg-semantic-error/10 flex items-center gap-2">
             <span>🗑️</span> 清空全部历史
           </button>
         </div>
       )}
+      {moreMenuOpen && <div className="fixed inset-0 z-40" onClick={() => setMoreMenuOpen(false)} />}
 
-      {/* 点击关闭更多菜单 */}
-      {moreMenuOpen && (
-        <div className="fixed inset-0 z-40" onClick={() => setMoreMenuOpen(false)} />
+      {/* 视频详情面板 */}
+      {selectedVideo && (
+        <VideoDetailPanel video={selectedVideo} onClose={() => setSelectedVideo(null)} onUpdateCategory={handleUpdateCategory} />
       )}
     </div>
   )

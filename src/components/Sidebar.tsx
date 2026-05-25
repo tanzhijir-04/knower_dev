@@ -54,17 +54,17 @@ function ContextMenu({ x, y, onClose, onRename, onPin, onExport, onDelete, isPin
   return (
     <div
       ref={ref}
-      className="fixed z-50 bg-surface-low border border-outline-variant rounded-xl shadow-xl py-1 min-w-[160px]"
+      className="fixed z-50 bg-surface border border-hairline rounded-xl py-1 min-w-[160px]"
       style={{ left: x, top: y }}
       onClick={e => e.stopPropagation()}
     >
       {items.map((item, i) => (
         <div key={i}>
-          {i === items.length - 1 && <div className="h-px bg-outline-variant mx-2 my-1" />}
+          {i === items.length - 1 && <div className="h-px bg-hairline mx-2 my-1" />}
           <button
             onClick={() => { item.onClick(); onClose() }}
-            className={`w-full px-3 py-2 text-left text-xs flex items-center gap-2 hover:bg-surface-container transition-colors ${
-              item.danger ? 'text-red-400 hover:bg-red-500/10' : 'text-on-surface'
+            className={`w-full px-3 py-2 text-left text-xs flex items-center gap-2 transition-colors ${
+              item.danger ? 'text-semantic-error hover:bg-semantic-error/10' : 'text-ink hover:bg-canvas'
             }`}
           >
             <span className="material-symbols-outlined text-[14px]">{item.icon}</span>
@@ -102,14 +102,14 @@ function ConversationItem({
   return (
     <div
       className={`group relative flex items-center gap-2 px-3 py-2 mx-1 rounded-lg cursor-pointer transition-colors ${
-        isActive ? 'bg-surface-container' : 'hover:bg-surface-container/50'
+        isActive ? 'bg-hairline' : 'hover:bg-hairline-soft'
       }`}
       onClick={onSelect}
       onContextMenu={(e) => { e.preventDefault(); onContextMenu(e) }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      <span className="material-symbols-outlined text-[14px] text-mute shrink-0">chat_bubble</span>
+      <span className="material-symbols-outlined text-[14px] text-muted shrink-0">chat_bubble</span>
 
       {isEditing ? (
         <input
@@ -121,22 +121,22 @@ function ConversationItem({
             if (e.key === 'Escape') onCancelEdit()
           }}
           onBlur={onConfirmEdit}
-          className="flex-1 bg-surface-high border border-primary/50 rounded px-2 py-0.5 text-xs text-on-surface outline-none"
+          className="flex-1 bg-surface border border-primary rounded px-2 py-0.5 text-xs text-ink outline-none"
           onClick={(e) => e.stopPropagation()}
         />
       ) : (
-        <span className="text-xs text-on-surface truncate flex-1">{conv.title}</span>
+        <span className="text-xs text-ink truncate flex-1">{conv.title}</span>
       )}
 
       {hovered && !isEditing && (
         <div className="flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-          <button onClick={onTogglePin} className="p-1 rounded text-mute hover:text-on-surface hover:bg-surface-high transition-colors" title={conv.isPinned ? '取消置顶' : '置顶'}>
+          <button onClick={onTogglePin} className="p-1 rounded text-muted hover:text-ink hover:bg-hairline-strong transition-colors" title={conv.isPinned ? '取消置顶' : '置顶'}>
             <span className={`material-symbols-outlined text-[12px] ${conv.isPinned ? 'text-primary' : ''}`}>push_pin</span>
           </button>
-          <button onClick={onEdit} className="p-1 rounded text-mute hover:text-on-surface hover:bg-surface-high transition-colors" title="重命名">
+          <button onClick={onEdit} className="p-1 rounded text-muted hover:text-ink hover:bg-hairline-strong transition-colors" title="重命名">
             <span className="material-symbols-outlined text-[12px]">edit</span>
           </button>
-          <button onClick={(e) => onContextMenu(e)} className="p-1 rounded text-mute hover:text-on-surface hover:bg-surface-high transition-colors" title="更多">
+          <button onClick={(e) => onContextMenu(e)} className="p-1 rounded text-muted hover:text-ink hover:bg-hairline-strong transition-colors" title="更多">
             <span className="material-symbols-outlined text-[12px]">more_horiz</span>
           </button>
         </div>
@@ -159,18 +159,18 @@ export default function Sidebar({ currentPage, onNavigate, onOpenConversation, c
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editingTitle, setEditingTitle] = useState('')
   const [activeConversationId, setActiveConversationId] = useState<number | null>(null)
-  const [theme, setTheme] = useState<'dark' | 'light' | 'system'>('dark')
+  const [theme, setTheme] = useState<'dark' | 'light' | 'system'>('light')
   const width = collapsed ? 56 : 240
 
   const handleThemeChange = (newTheme: 'dark' | 'light' | 'system') => {
     setTheme(newTheme)
     const root = document.documentElement
-    root.classList.remove('theme-dark', 'theme-light')
-    if (newTheme === 'system') {
+    root.classList.remove('dark')
+    if (newTheme === 'dark') {
+      root.classList.add('dark')
+    } else if (newTheme === 'system') {
       const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-      root.classList.add(prefersDark ? 'theme-dark' : 'theme-light')
-    } else {
-      root.classList.add(`theme-${newTheme}`)
+      if (prefersDark) root.classList.add('dark')
     }
     window.electronAPI?.setStore('theme', newTheme)
   }
@@ -180,6 +180,16 @@ export default function Sidebar({ currentPage, onNavigate, onOpenConversation, c
       if (saved) handleThemeChange(saved as 'dark' | 'light' | 'system')
     })
   }, [])
+
+  // 监听系统主题变化，system 模式下自动跟随
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)')
+    const handleChange = () => {
+      if (theme === 'system') handleThemeChange('system')
+    }
+    mq.addEventListener('change', handleChange)
+    return () => mq.removeEventListener('change', handleChange)
+  }, [theme])
 
   const loadConversations = () => {
     window.electronAPI?.listConversations().then((list: Conversation[]) => {
@@ -261,31 +271,31 @@ export default function Sidebar({ currentPage, onNavigate, onOpenConversation, c
 
   return (
     <aside
-      className="h-full border-r border-border/50 flex flex-col shrink-0 transition-all duration-250 bg-sidebar"
+      className="h-full border-r border-hairline flex flex-col shrink-0 transition-all duration-300 bg-canvas-soft"
       style={{ width }}
     >
-      {/* Logo */}
-      <div className="flex items-center gap-3 px-4 py-4 border-b border-border/30">
-        <img src={logoSvg} alt="知更" className="w-8 h-8 rounded-lg shrink-0" />
-        <span className={`text-sm font-semibold text-on-surface whitespace-nowrap overflow-hidden transition-all duration-200 ${collapsed ? 'w-0 opacity-0' : 'w-auto opacity-100 delay-150'}`}>
-          知更 Knower
-        </span>
+      {/* Logo + window controls */}
+      <div className="titlebar-drag flex items-center justify-between px-5 h-12 border-b border-hairline">
+        <div className="flex items-center gap-3 no-drag">
+          <img src={logoSvg} alt="知更" className="w-8 h-8 rounded-lg shrink-0" />
+          <span className={`text-ink whitespace-nowrap overflow-hidden transition-all duration-200 ${collapsed ? 'w-0 opacity-0' : 'w-auto opacity-100 delay-150'}`}
+            style={{ fontSize: 18, fontWeight: 400, letterSpacing: '-0.11px' }}>
+            知更 Knower
+          </span>
+        </div>
+
       </div>
 
       {/* Navigation */}
-      <nav className="flex flex-col gap-0.5 px-2 pt-3">
+      <nav className="flex flex-col gap-0.5 px-3 pt-4">
         {navItems.map((item) => (
           <button
             key={item.id}
             onClick={() => onNavigate(item.id)}
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors text-left ${
-              currentPage === item.id
-                ? 'bg-surface-container text-primary border-l-2 border-primary'
-                : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container/50 border-l-2 border-transparent'
-            }`}
+            className={`nav-item ${currentPage === item.id ? 'active' : ''}`}
           >
             <span className="material-symbols-outlined text-[20px] shrink-0">{item.icon}</span>
-            <span className={`text-sm whitespace-nowrap overflow-hidden transition-all duration-200 ${collapsed ? 'w-0 opacity-0' : 'w-auto opacity-100 delay-100'}`}>
+            <span className={`whitespace-nowrap overflow-hidden transition-all duration-200 ${collapsed ? 'w-0 opacity-0' : 'w-auto opacity-100 delay-100'}`}>
               {item.label}
             </span>
           </button>
@@ -296,25 +306,29 @@ export default function Sidebar({ currentPage, onNavigate, onOpenConversation, c
       {currentPage === 'chat' && (
         <div className={`flex-1 flex flex-col mt-4 overflow-hidden transition-all duration-200 ${collapsed ? 'w-0 opacity-0 pointer-events-none' : 'w-auto opacity-100 delay-100'}`}>
           {/* Search box */}
-          <div className="px-2 mb-2">
+          <div className="px-3 mb-3">
             <div className="relative">
-              <span className="material-symbols-outlined absolute left-2 top-1/2 -translate-y-1/2 text-[14px] text-mute">search</span>
+              <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-[14px] text-muted">search</span>
               <input
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="搜索对话..."
-                className="w-full bg-surface-container rounded-lg pl-7 pr-3 py-1.5 text-[11px] text-on-surface placeholder:text-mute outline-none border border-transparent focus:border-outline-variant/50 transition-colors"
+                className="w-full bg-surface border border-hairline rounded-lg pl-8 pr-3 py-2 text-[13px] text-ink placeholder:text-muted-soft outline-none transition-colors"
+                style={{ height: 36 }}
               />
             </div>
           </div>
+
+          {/* Section label */}
+          <span className="text-[11px] font-semibold tracking-wide uppercase text-muted px-4 mb-2">最近对话</span>
 
           {/* Conversation list */}
           <div className="flex-1 overflow-y-auto px-1">
             {pinned.length > 0 && (
               <div className="mb-2">
                 <div className="px-3 mb-1 flex items-center gap-1">
-                  <span className="material-symbols-outlined text-[12px] text-mute">push_pin</span>
-                  <span className="text-[10px] text-mute">置顶</span>
+                  <span className="material-symbols-outlined text-[12px] text-muted">push_pin</span>
+                  <span className="text-[10px] text-muted">置顶</span>
                 </div>
                 {pinned.map(conv => renderConversationItem(conv))}
               </div>
@@ -322,15 +336,12 @@ export default function Sidebar({ currentPage, onNavigate, onOpenConversation, c
 
             {recent.length > 0 && (
               <div>
-                <div className="px-3 mb-1">
-                  <span className="text-[10px] text-mute">最近对话</span>
-                </div>
                 {recent.map(conv => renderConversationItem(conv))}
               </div>
             )}
 
             {filteredConversations.length === 0 && (
-              <p className="text-[11px] text-mute px-3 py-2">
+              <p className="text-[11px] text-muted px-3 py-2">
                 {searchQuery ? '没有匹配的对话' : '暂无对话'}
               </p>
             )}
@@ -339,7 +350,7 @@ export default function Sidebar({ currentPage, onNavigate, onOpenConversation, c
       )}
 
       {/* Bottom bar: theme toggle + collapse */}
-      <div className="px-2 py-3 border-t border-border/30 space-y-2">
+      <div className="px-3 py-3 border-t border-hairline space-y-2">
         {/* Theme toggle — expanded */}
         {!collapsed && (
           <div className="flex items-center justify-center gap-1">
@@ -352,7 +363,7 @@ export default function Sidebar({ currentPage, onNavigate, onOpenConversation, c
                 key={t.mode}
                 onClick={() => handleThemeChange(t.mode)}
                 className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
-                  theme === t.mode ? 'bg-primary/20 text-primary' : 'text-mute hover:text-on-surface hover:bg-surface-container'
+                  theme === t.mode ? 'bg-primary/15 text-primary' : 'text-muted hover:text-ink hover:bg-hairline'
                 }`}
                 title={t.tip}
               >
@@ -367,7 +378,7 @@ export default function Sidebar({ currentPage, onNavigate, onOpenConversation, c
           <div className="flex justify-center">
             <button
               onClick={() => handleThemeChange(theme === 'dark' ? 'light' : theme === 'light' ? 'system' : 'dark')}
-              className="w-8 h-8 rounded-full flex items-center justify-center text-mute hover:text-on-surface hover:bg-surface-container transition-colors"
+              className="w-8 h-8 rounded-full flex items-center justify-center text-muted hover:text-ink hover:bg-hairline transition-colors"
               title={theme === 'dark' ? '切换到浅色' : theme === 'light' ? '切换到跟随系统' : '切换到深色'}
             >
               <span className="material-symbols-outlined text-[16px]">
@@ -380,7 +391,7 @@ export default function Sidebar({ currentPage, onNavigate, onOpenConversation, c
         {/* Collapse button */}
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="w-full py-2 rounded-lg text-mute hover:text-on-surface hover:bg-surface-container/50 transition-colors"
+          className="nav-item justify-center"
         >
           <span className={`material-symbols-outlined text-[18px] transition-transform ${collapsed ? 'rotate-180' : ''}`}>
             chevron_left

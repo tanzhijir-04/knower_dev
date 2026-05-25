@@ -24,7 +24,6 @@ export interface MaterialData {
     douyin?: PlatformMaterial
     xiaohongshu?: PlatformMaterial
     youtube?: PlatformMaterial
-    subtitles?: string
   }
 }
 
@@ -39,7 +38,6 @@ const PLATFORMS = [
   { key: 'douyin', label: '抖音', icon: 'music_note', color: '#fe2c55' },
   { key: 'xiaohongshu', label: '小红书', icon: 'style', color: '#ff2442' },
   { key: 'checklist', label: '拍摄清单', icon: 'checklist', color: '#6bfb9a' },
-  { key: 'subtitles', label: '字幕稿', icon: 'subtitles', color: '#a78bfa' },
 ] as const
 
 function CopyButton({ text }: { text: string }) {
@@ -56,7 +54,7 @@ function CopyButton({ text }: { text: string }) {
   return (
     <button
       onClick={handleCopy}
-      className="text-mute hover:text-on-surface transition-colors"
+      className="text-muted hover:text-ink transition-colors"
       title="复制"
     >
       <span className="material-symbols-outlined text-[16px]">
@@ -69,35 +67,35 @@ function CopyButton({ text }: { text: string }) {
 function AnalysisCard({ analysis }: { analysis: MaterialData['analysis'] }) {
   if (!analysis) return null
   return (
-    <div className="bg-surface-low rounded-xl p-4 mb-3">
+    <div className="card-sm mb-3">
       <div className="flex items-center gap-2 mb-3">
         <span className="material-symbols-outlined text-primary text-[18px]">analytics</span>
-        <span className="text-sm font-medium text-on-surface">脚本分析</span>
+        <span className="text-sm font-medium text-ink">脚本分析</span>
       </div>
       <div className="grid grid-cols-2 gap-3 text-sm">
         <div>
-          <span className="text-mute text-xs">视频类型</span>
-          <p className="text-on-surface">{analysis.videoType}</p>
+          <span className="text-muted text-xs">视频类型</span>
+          <p className="text-ink">{analysis.videoType}</p>
         </div>
         <div>
-          <span className="text-mute text-xs">目标受众</span>
-          <p className="text-on-surface">{analysis.audience}</p>
+          <span className="text-muted text-xs">目标受众</span>
+          <p className="text-ink">{analysis.audience}</p>
         </div>
         <div>
-          <span className="text-mute text-xs">预估时长</span>
-          <p className="text-on-surface">{analysis.duration}</p>
+          <span className="text-muted text-xs">预估时长</span>
+          <p className="text-ink">{analysis.duration}</p>
         </div>
         <div>
-          <span className="text-mute text-xs">核心主题</span>
-          <p className="text-on-surface">{analysis.topic}</p>
+          <span className="text-muted text-xs">核心主题</span>
+          <p className="text-ink">{analysis.topic}</p>
         </div>
       </div>
       {analysis.keyPoints && analysis.keyPoints.length > 0 && (
         <div className="mt-3">
-          <span className="text-mute text-xs">关键卖点</span>
+          <span className="text-muted text-xs">关键卖点</span>
           <ul className="mt-1 space-y-1">
             {analysis.keyPoints.map((point, i) => (
-              <li key={i} className="flex items-start gap-2 text-sm text-on-surface">
+              <li key={i} className="flex items-start gap-2 text-sm text-ink">
                 <span className="text-primary mt-0.5">•</span>
                 {point}
               </li>
@@ -126,44 +124,44 @@ function PlatformTab({ platform, material }: { platform: typeof PLATFORMS[number
       {material.hook && (
         <div>
           <div className="flex items-center justify-between mb-1">
-            <span className="text-xs text-mute">前 3 秒钩子</span>
+            <span className="text-xs text-muted">前 3 秒钩子</span>
             <CopyButton text={material.hook} />
           </div>
-          <p className="text-sm text-on-surface bg-surface-low rounded-lg px-3 py-2">{material.hook}</p>
+          <p className="text-sm text-ink bg-canvas-soft rounded-lg px-3 py-2">{material.hook}</p>
         </div>
       )}
       {material.title && (
         <div>
           <div className="flex items-center justify-between mb-1">
-            <span className="text-xs text-mute">标题</span>
+            <span className="text-xs text-muted">标题</span>
             <CopyButton text={material.title} />
           </div>
-          <p className="text-sm text-on-surface bg-surface-low rounded-lg px-3 py-2">{material.title}</p>
+          <p className="text-sm text-ink bg-canvas-soft rounded-lg px-3 py-2">{material.title}</p>
         </div>
       )}
       {material.coverTitle && (
         <div>
           <div className="flex items-center justify-between mb-1">
-            <span className="text-xs text-mute">封面标题</span>
+            <span className="text-xs text-muted">封面标题</span>
             <CopyButton text={material.coverTitle} />
           </div>
-          <p className="text-sm text-on-surface bg-surface-low rounded-lg px-3 py-2">{material.coverTitle}</p>
+          <p className="text-sm text-ink bg-canvas-soft rounded-lg px-3 py-2">{material.coverTitle}</p>
         </div>
       )}
       {(material.description || material.body) && (
         <div>
           <div className="flex items-center justify-between mb-1">
-            <span className="text-xs text-mute">{material.description ? '描述' : '正文'}</span>
+            <span className="text-xs text-muted">{material.description ? '描述' : '正文'}</span>
             <CopyButton text={material.description || material.body || ''} />
           </div>
-          <p className="text-sm text-on-surface bg-surface-low rounded-lg px-3 py-2 whitespace-pre-wrap leading-relaxed">
+          <p className="text-sm text-ink bg-canvas-soft rounded-lg px-3 py-2 whitespace-pre-wrap leading-relaxed">
             {material.description || material.body}
           </p>
         </div>
       )}
       {material.tags && material.tags.length > 0 && (
         <div>
-          <span className="text-xs text-mute block mb-1.5">标签</span>
+          <span className="text-xs text-muted block mb-1.5">标签</span>
           <div className="flex flex-wrap gap-1.5">
             {material.tags.map((tag, i) => (
               <span key={i} className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">
@@ -178,7 +176,7 @@ function PlatformTab({ platform, material }: { platform: typeof PLATFORMS[number
 }
 
 function ChecklistTab({ checklist }: { checklist: NonNullable<MaterialData['result']>['shootingChecklist'] }) {
-  if (!checklist?.length) return <p className="text-sm text-mute">暂无拍摄清单</p>
+  if (!checklist?.length) return <p className="text-sm text-muted">暂无拍摄清单</p>
 
   const fullText = checklist
     .map((item, i) => `${i + 1}. [${item.scene}] ${item.content} (${item.duration})${item.notes ? ' - ' + item.notes : ''}`)
@@ -195,30 +193,17 @@ function ChecklistTab({ checklist }: { checklist: NonNullable<MaterialData['resu
             <span className="text-primary font-medium mt-0.5">{i + 1}</span>
             <div className="flex-1">
               <div className="flex items-center gap-2">
-                <span className="text-xs bg-surface-highest text-on-surface-variant px-1.5 py-0.5 rounded">
+                <span className="text-xs bg-surface-strong text-muted px-1.5 py-0.5 rounded">
                   {item.scene}
                 </span>
-                <span className="text-xs text-mute">{item.duration}</span>
+                <span className="text-xs text-muted">{item.duration}</span>
               </div>
-              <p className="text-on-surface mt-1">{item.content}</p>
-              {item.notes && <p className="text-xs text-mute mt-0.5">{item.notes}</p>}
+              <p className="text-ink mt-1">{item.content}</p>
+              {item.notes && <p className="text-xs text-muted mt-0.5">{item.notes}</p>}
             </div>
           </div>
         ))}
       </div>
-    </div>
-  )
-}
-
-function SubtitlesTab({ srt }: { srt: string }) {
-  return (
-    <div>
-      <div className="flex justify-end mb-2">
-        <CopyButton text={srt} />
-      </div>
-      <pre className="text-xs text-on-surface bg-surface-low rounded-lg px-3 py-2 overflow-x-auto whitespace-pre-wrap font-mono leading-relaxed max-h-64 overflow-y-auto">
-        {srt}
-      </pre>
     </div>
   )
 }
@@ -242,7 +227,7 @@ export default function MaterialCards({ data, onOpenCanvas }: Props) {
             className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors whitespace-nowrap border-b-2 ${
               activeTab === p.key
                 ? 'border-primary text-primary'
-                : 'border-transparent text-on-surface-variant hover:text-on-surface'
+                : 'border-transparent text-muted hover:text-ink'
             }`}
           >
             <span className="material-symbols-outlined text-[16px]">{p.icon}</span>
@@ -252,7 +237,7 @@ export default function MaterialCards({ data, onOpenCanvas }: Props) {
         {onOpenCanvas && (
           <button
             onClick={onOpenCanvas}
-            className="ml-auto flex items-center gap-1 px-2.5 py-1.5 text-xs text-mute hover:text-on-surface hover:bg-surface-container rounded-lg transition-colors shrink-0"
+            className="ml-auto flex items-center gap-1 px-2.5 py-1.5 text-xs text-muted hover:text-ink hover:bg-hairline rounded-lg transition-colors shrink-0"
             title="在面板查看"
           >
             <span className="material-symbols-outlined text-[14px]">dashboard</span>
@@ -277,9 +262,6 @@ export default function MaterialCards({ data, onOpenCanvas }: Props) {
         )}
         {activeTab === 'checklist' && (
           <ChecklistTab checklist={data.result?.shootingChecklist} />
-        )}
-        {activeTab === 'subtitles' && data.result?.subtitles && (
-          <SubtitlesTab srt={data.result.subtitles} />
         )}
       </div>
     </div>

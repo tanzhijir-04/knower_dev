@@ -32,9 +32,10 @@ function createWindow() {
     height: 800,
     minWidth: 900,
     minHeight: 600,
-    titleBarStyle: 'hiddenInset',
+    frame: false,
+    titleBarStyle: 'hidden',
     trafficLightPosition: { x: 12, y: 12 },
-    backgroundColor: '#0e150f',
+    backgroundColor: '#f7f7f4',
     icon,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -69,6 +70,17 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
+
+// ============================================================
+//  窗口控制
+// ============================================================
+
+ipcMain.handle('window-minimize', () => mainWindow?.minimize())
+ipcMain.handle('window-maximize', () => {
+  if (mainWindow?.isMaximized()) mainWindow.unmaximize()
+  else mainWindow?.maximize()
+})
+ipcMain.handle('window-close', () => mainWindow?.close())
 
 // ============================================================
 //  Settings 持久化
@@ -111,8 +123,14 @@ ipcMain.handle('set-store', (_event, key: string, value: unknown) => {
 
 let currentAbortController: AbortController | null = null
 let currentAgent: InstanceType<typeof Agent> | null = null
+let agentLock = false
 
-ipcMain.handle('agent-run', async (event, script: string, platforms: string[]) => {
+ipcMain.handle('agent-run', async (event, script: string, platforms: string[], conversationId?: number) => {
+  if (agentLock) {
+    return { error: 'Agent 正在处理中，请稍候' }
+  }
+  agentLock = true
+
   const settings = readSettings()
   const agent = new Agent({
     apiKey: settings.apiKey as string,
@@ -122,7 +140,28 @@ ipcMain.handle('agent-run', async (event, script: string, platforms: string[]) =
   })
   currentAgent = agent
 
-  const prompt = `请帮我分析以下脚本，并为 ${platforms.join('、')} 三个平台生成发布物料：\n\n${script}`
+  // 获取最近对话历史（最多 5 轮）
+  let historyContext = ''
+  if (conversationId) {
+    try {
+      const messages = await db.getMessages(conversationId)
+      const recent = messages.slice(-10)
+      if (recent.length > 0) {
+        historyContext = recent.map((m: { role: string; content: string }) => {
+          const role = m.role === 'user' ? '用户' : '助手'
+          const content = m.content.slice(0, 500)
+          return `${role}：${content}`
+        }).join('\n')
+      }
+    } catch { /* ignore */ }
+  }
+
+  let prompt = script
+  if (historyContext) {
+    prompt = `## 最近对话记录\n${historyContext}\n\n## 当前请求\n${script}`
+  }
+
+  prompt = `请帮我分析以下脚本，并为 ${platforms.join('、')} 三个平台生成发布物料：\n\n${prompt}`
 
   // 注入用户爬取数据摘要
   const dataSummary = await db.getRecentCrawlSummary()
@@ -163,6 +202,7 @@ ipcMain.handle('agent-run', async (event, script: string, platforms: string[]) =
   } finally {
     currentAbortController = null
     currentAgent = null
+    agentLock = false
   }
 })
 
@@ -226,6 +266,21 @@ ipcMain.handle('conv-toggle-pin', async (_event, id: number) => {
   return true
 })
 
+ipcMain.handle('search-messages', async (_event, query: string) => {
+  const conversations = await db.listConversations()
+  const results: { convId: number; convTitle: string; matches: { role: string; content: string }[] }[] = []
+  for (const conv of conversations) {
+    const messages = await db.getMessages(conv.id)
+    const matches = messages
+      .filter((m: { content: string }) => m.content.toLowerCase().includes(query.toLowerCase()))
+      .map((m: { role: string; content: string }) => ({ role: m.role, content: m.content.slice(0, 200) }))
+    if (matches.length > 0) {
+      results.push({ convId: conv.id, convTitle: conv.title, matches })
+    }
+  }
+  return results
+})
+
 // ============================================================
 //  爬虫
 // ============================================================
@@ -273,7 +328,8 @@ ipcMain.handle('crawler-run', async (event, platform: string, keywords: string, 
         || result.creators?.[0]?.face
         || result.creators?.[0]?.avatar_url
         || ''
-      await db.saveCreator(sourceUid, creatorName, creatorAvatar)
+      const totalFans = parseInt(result.creators?.[0]?.total_fans) || 0
+      await db.saveCreator(sourceUid, creatorName, creatorAvatar, totalFans)
     }
     if (result.creators && result.creators.length > 0) {
       await db.saveCrawlCreatorsBatch(taskId, platform, result.creators)
@@ -398,7 +454,16 @@ ipcMain.handle('analyze-video-data', async (_event, platform: string, sourceUid?
       ? await db.getVideosBySource(platform || 'bili', sourceUid)
       : await db.getAllCrawlContent(platform || 'bili')
     if (videos.length === cached.videoCount) {
-      return { ...cached.analysis, overview: cached.overview }
+      // 从 creators 表补全粉丝数
+      let fans = cached.analysis.fans || 0
+      if (!fans && sourceUid) {
+        try {
+          const creatorsList = await db.getCreators()
+          const match = creatorsList.find((c: { uid: string }) => c.uid === sourceUid || sourceUid.startsWith(c.uid))
+          if (match) fans = (match as { totalFans?: number }).totalFans || 0
+        } catch { /* ignore */ }
+      }
+      return { ...cached.analysis, overview: cached.overview, fans }
     }
     // 数据数量变化，清除旧缓存
     await db.deleteVideoAnalysis(platform || 'bili', sourceUid || '')
@@ -431,8 +496,23 @@ ipcMain.handle('analyze-video-data', async (_event, platform: string, sourceUid?
   const totalPlay = enriched.reduce((s: number, v: { playCount: number }) => s + v.playCount, 0)
   const totalLike = enriched.reduce((s: number, v: { likeCount: number }) => s + v.likeCount, 0)
   const totalComment = enriched.reduce((s: number, v: { commentCount: number }) => s + v.commentCount, 0)
+  const totalShare = enriched.reduce((s: number, v: { shareCount: number }) => s + v.shareCount, 0)
+  const totalCoin = enriched.reduce((s: number, v: { coinCount: number }) => s + v.coinCount, 0)
+  const totalFavorite = enriched.reduce((s: number, v: { favoriteCount: number }) => s + v.favoriteCount, 0)
+  const totalDanmaku = enriched.reduce((s: number, v: { danmaku: number }) => s + v.danmaku, 0)
   const avgPlay = Math.round(totalPlay / enriched.length)
   const avgLike = Math.round(totalLike / enriched.length)
+  const avgEngagement = enriched.length > 0
+    ? enriched.reduce((s: number, v: { playCount: number; likeCount: number; coinCount: number; favoriteCount: number; commentCount: number; danmaku: number }) =>
+        s + (v.playCount > 0 ? (v.likeCount + v.coinCount + v.favoriteCount + v.commentCount + v.danmaku) / v.playCount * 100 : 0), 0) / enriched.length
+    : 0
+
+  // 查找粉丝数
+  const creators = await db.getCreators()
+  const matchingCreator = creators.find((c: { uid: string }) => {
+    const srcUid = sourceUid || ''
+    return c.uid === srcUid || srcUid.startsWith(c.uid)
+  })
 
   // 互动率排行
   const withEngagement = enriched.map((v: typeof enriched[0]) => ({
@@ -502,12 +582,18 @@ ${videoDataStr}
     totalPlay,
     totalLike,
     totalComment,
+    totalShare,
+    totalCoin,
+    totalFavorite,
+    totalDanmaku,
     avgPlay,
     avgLike,
+    avgEngagement: Math.round(avgEngagement * 100) / 100,
   }
 
   const result = {
     overview,
+    fans: (matchingCreator as { totalFans?: number } | undefined)?.totalFans || 0,
     topByEngagement: withEngagement.slice(0, 20).map((v: { title: string; playCount: number; engagementRate: number }) => ({
       title: v.title,
       playCount: v.playCount,

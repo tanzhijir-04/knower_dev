@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { usePlatform } from '../contexts/PlatformContext'
 import TrendPanel from './topics/TrendPanel'
 import TopicCard from './topics/TopicCard'
 import TopicDetail from './topics/TopicDetail'
@@ -25,6 +26,7 @@ export default function TopicsView({ onSendToChat }: Props) {
   const [savedTopics, setSavedTopics] = useState<SavedTopic[]>([])
   const [showSaved, setShowSaved] = useState(false)
   const [status, setStatus] = useState('')
+  const { isWindows } = usePlatform()
 
   const api = window.electronAPI
 
@@ -99,8 +101,8 @@ export default function TopicsView({ onSendToChat }: Props) {
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Header */}
-      <header className="titlebar-drag h-12 flex items-center px-5 border-b border-border/30 shrink-0 gap-3">
-        <h1 className="text-sm font-medium text-on-surface no-drag">灵感库</h1>
+      <header className={`titlebar-drag h-12 flex items-center px-5 shrink-0 gap-3 ${isWindows ? '' : 'border-b border-hairline'}`}>
+        <h1 className="text-sm font-medium text-ink no-drag">灵感库</h1>
         <div className="flex-1" />
         {/* Platform selector */}
         <div className="flex items-center gap-1 no-drag">
@@ -111,18 +113,18 @@ export default function TopicsView({ onSendToChat }: Props) {
               className={`px-2.5 py-1 text-xs rounded-lg transition-colors ${
                 platform === p.key
                   ? 'bg-primary/15 text-primary'
-                  : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container'
+                  : 'text-muted hover:text-ink hover:bg-canvas-soft'
               }`}
             >
               {p.label}
             </button>
           ))}
         </div>
-        <div className="w-px h-5 bg-border/30 no-drag" />
+        <div className="w-px h-5 bg-hairline no-drag" />
         <button
           onClick={() => setShowSaved(!showSaved)}
           className={`no-drag text-xs px-2.5 py-1 rounded-lg transition-colors ${
-            showSaved ? 'bg-primary/15 text-primary' : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container'
+            showSaved ? 'bg-primary/15 text-primary' : 'text-muted hover:text-ink hover:bg-canvas-soft'
           }`}
         >
           <span className="material-symbols-outlined text-[14px] align-middle mr-1">bookmark</span>
@@ -131,7 +133,7 @@ export default function TopicsView({ onSendToChat }: Props) {
         <button
           onClick={handleGenerate}
           disabled={generating}
-          className="no-drag flex items-center gap-1 px-3 py-1.5 bg-primary/15 text-primary text-xs rounded-lg hover:bg-primary/25 transition-colors disabled:opacity-50"
+          className="no-drag flex items-center gap-1 px-3 py-1.5 bg-primary/15 text-primary text-xs rounded-lg hover:bg-primary/20 transition-colors disabled:opacity-50"
         >
           {generating ? (
             <>
@@ -163,16 +165,16 @@ export default function TopicsView({ onSendToChat }: Props) {
           <div className="flex-1 overflow-y-auto p-4">
             {displayTopics.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-center">
-                <span className="material-symbols-outlined text-[36px] text-mute mb-3">lightbulb</span>
-                <p className="text-sm text-on-surface-variant mb-1">
+                <span className="material-symbols-outlined text-[36px] text-muted mb-3">lightbulb</span>
+                <p className="text-sm text-muted mb-1">
                   {showSaved ? '暂无收藏的选题' : '暂无选题建议'}
                 </p>
-                <p className="text-xs text-mute">
+                <p className="text-xs text-muted">
                   {showSaved ? '在 AI 生成后收藏选题' : '点击上方 "AI 生成选题" 开始'}
                 </p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {displayTopics.map((topic, i) => (
                   <TopicCard
                     key={i}
@@ -187,7 +189,7 @@ export default function TopicsView({ onSendToChat }: Props) {
 
           {/* Detail panel */}
           {selectedIdx !== null && displayTopics[selectedIdx] && (
-            <div className="w-80 shrink-0 border-l border-border/30 p-4 overflow-y-auto">
+            <div className="w-80 shrink-0 border-l border-hairline p-4 overflow-y-auto">
               <TopicDetail
                 topic={displayTopics[selectedIdx]}
                 onSave={() => handleSave(displayTopics[selectedIdx])}

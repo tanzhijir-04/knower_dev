@@ -194,9 +194,17 @@ function initTables() {
       avatar_url TEXT DEFAULT '',
       is_starred INTEGER DEFAULT 0,
       is_pinned INTEGER DEFAULT 0,
+      total_fans INTEGER DEFAULT 0,
       last_fetched_at DATETIME DEFAULT (datetime('now','localtime'))
     )
   `)
+  // 迁移：如果旧表没有 total_fans 列，添加
+  try {
+    db.exec('SELECT total_fans FROM creators LIMIT 1')
+  } catch {
+    db.exec('ALTER TABLE creators ADD COLUMN total_fans INTEGER DEFAULT 0')
+    saveDb()
+  }
   db.run(`
     CREATE TABLE IF NOT EXISTS saved_topics (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -614,13 +622,13 @@ async function cleanOldData() {
 
 // --- 创作者管理 ---
 
-async function saveCreator(uid, name, avatarUrl) {
+async function saveCreator(uid, name, avatarUrl, totalFans) {
   const db = await getDb()
   db.run(
-    `INSERT INTO creators (uid, name, avatar_url, last_fetched_at)
-     VALUES (?, ?, ?, datetime('now','localtime'))
-     ON CONFLICT(uid) DO UPDATE SET name = ?, avatar_url = ?, last_fetched_at = datetime('now','localtime')`,
-    [uid, name, avatarUrl || '', name, avatarUrl || '']
+    `INSERT INTO creators (uid, name, avatar_url, total_fans, last_fetched_at)
+     VALUES (?, ?, ?, ?, datetime('now','localtime'))
+     ON CONFLICT(uid) DO UPDATE SET name = ?, avatar_url = ?, total_fans = ?, last_fetched_at = datetime('now','localtime')`,
+    [uid, name, avatarUrl || '', totalFans || 0, name, avatarUrl || '', totalFans || 0]
   )
   saveDb()
 }
@@ -628,7 +636,7 @@ async function saveCreator(uid, name, avatarUrl) {
 async function getCreators() {
   const db = await getDb()
   const res = db.exec(
-    `SELECT uid, name, avatar_url, is_starred, is_pinned, last_fetched_at
+    `SELECT uid, name, avatar_url, is_starred, is_pinned, total_fans, last_fetched_at
      FROM creators ORDER BY is_pinned DESC, is_starred DESC, last_fetched_at DESC`
   )
   if (!res.length) return []
@@ -638,7 +646,8 @@ async function getCreators() {
     avatarUrl: row[2],
     isStarred: row[3],
     isPinned: row[4],
-    lastFetchedAt: row[5],
+    totalFans: row[5] || 0,
+    lastFetchedAt: row[6],
   }))
 }
 
@@ -721,11 +730,11 @@ async function getSourceList(platform) {
   query += ' GROUP BY source_uid ORDER BY cnt DESC'
   const res = db.exec(query, params)
   // 获取创作者信息（含收藏/置顶状态）
-  const creatorsRes = db.exec('SELECT uid, name, avatar_url, is_starred, is_pinned FROM creators')
+  const creatorsRes = db.exec('SELECT uid, name, avatar_url, is_starred, is_pinned, total_fans FROM creators')
   const creatorMap = {}
   if (creatorsRes.length) {
     for (const row of creatorsRes[0].values) {
-      creatorMap[row[0]] = { name: row[1], avatarUrl: row[2], isStarred: row[3], isPinned: row[4] }
+      creatorMap[row[0]] = { name: row[1], avatarUrl: row[2], isStarred: row[3], isPinned: row[4], totalFans: row[5] || 0 }
     }
   }
 
@@ -768,6 +777,7 @@ async function getSourceList(platform) {
       avatarUrl: creator?.avatarUrl || '',
       isStarred: creator?.isStarred || 0,
       isPinned: creator?.isPinned || 0,
+      totalFans: creator?.totalFans || 0,
     }
   })
 }

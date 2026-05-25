@@ -85,9 +85,15 @@ export interface VideoAnalysis {
     totalPlay: number
     totalLike: number
     totalComment: number
+    totalShare: number
+    totalCoin: number
+    totalFavorite: number
+    totalDanmaku: number
     avgPlay: number
     avgLike: number
+    avgEngagement: number
   }
+  fans?: number
   topTopics?: { topic: string; avgPlay: number; count: number }[]
   titlePatterns?: string
   bestDuration?: string
@@ -117,6 +123,7 @@ export interface SourceInfo {
   avatarUrl: string
   isStarred: number
   isPinned: number
+  totalFans: number
 }
 
 export interface SourceDetailItem {
@@ -170,12 +177,18 @@ export interface TrendData {
 }
 
 export interface ElectronAPI {
+  // 平台信息
+  platform: string
+  // 窗口控制
+  minimizeWindow: () => Promise<void>
+  maximizeWindow: () => Promise<void>
+  closeWindow: () => Promise<void>
   // 设置
   getStore: (key: string) => Promise<unknown>
   getStoreAll: () => Promise<Record<string, unknown>>
   setStore: (key: string, value: unknown) => Promise<boolean>
   // Agent
-  runAgent: (script: string, platforms: string[]) => Promise<void>
+  runAgent: (script: string, platforms: string[], conversationId?: number) => Promise<void>
   stopAgent: () => Promise<boolean>
   submitAgentForm: (data: Record<string, string>) => Promise<boolean>
   onAgentEvent: (callback: (event: string) => void) => () => void
@@ -208,6 +221,7 @@ export interface ElectronAPI {
   pinCreator: (uid: string) => Promise<boolean>
   deleteCreator: (uid: string) => Promise<boolean>
   deleteMessage: (id: number) => Promise<boolean>
+  searchMessages: (query: string) => Promise<{ convId: number; convTitle: string; matches: { role: string; content: string }[] }[]>
   exportSourceData: (sourceUid: string) => Promise<boolean>
   // 分类
   autoCategorize: (platform: string) => Promise<AutoCategorizeResult>
