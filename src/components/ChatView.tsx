@@ -478,7 +478,7 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
       ...prev.slice(0, msgIndex).map(m =>
         m.id === editingMsgId ? { ...m, content: editingContent.trim() } : m
       ),
-      { ...messages[msgIndex], content: editingContent.trim() },
+      { ...prev[msgIndex], content: editingContent.trim() },
     ])
 
     setEditingMsgId(null)
@@ -505,11 +505,7 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
     setIsDragging(true)
   }
   const handleDragLeave = () => setIsDragging(false)
-  const handleDrop = async (e: React.DragEvent) => {
-    e.preventDefault()
-    setIsDragging(false)
-    const file = e.dataTransfer.files[0]
-    if (!file) return
+  const importFile = async (file: File) => {
     const ext = file.name.split('.').pop()?.toLowerCase()
     if (!['txt', 'md', 'docx'].includes(ext || '')) {
       showToast('不支持的文件格式，请使用 .txt / .md / .docx', 'error')
@@ -525,15 +521,21 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
       } else {
         showToast('文件内容为空', 'error')
       }
-    } catch {
-      showToast('文件读取失败', 'error')
+    } catch (err) {
+      showToast('文件读取失败' + ((err as Error).message ? '：' + (err as Error).message : ''), 'error')
     }
+  }
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(false)
+    const file = e.dataTransfer.files[0]
+    if (file) await importFile(file)
   }
 
   const prefillPrompt = (action: string) => {
     const templates: Record<string, string> = {
       '生成物料': '请帮我分析以下脚本并生成各平台发布物料：\n\n',
-      '分析数据': '请帮我分析以下数据并给出建议：\n\n',
+      '分析数据': '帮我看看我的数据表现怎么样',
       '选题建议': '基于我的账号数据，帮我推荐5个选题方向',
       '导出结果': '请帮我导出上次生成的物料',
       '拍摄清单': '请为以下脚本生成拍摄清单，只需要拍摄清单，不需要其他平台物料。\n\n要求：\n- 具体到景别（特写/中景/全景/俯拍/跟拍/空镜）\n- 标注每个镜头的预估时长\n- 按拍摄顺序排列\n- 标注需要的道具和场地\n- 输出为表格格式\n\n脚本内容：\n',
@@ -563,26 +565,7 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
 
   const handleFileImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (!file) return
-    const ext = file.name.split('.').pop()?.toLowerCase()
-    if (!['txt', 'md', 'docx'].includes(ext || '')) {
-      showToast('不支持的文件格式，请使用 .txt / .md / .docx', 'error')
-      e.target.value = ''
-      return
-    }
-    try {
-      const text = await readFileAsText(file)
-      if (text.trim()) {
-        setInput(prev => prev ? prev + '\n\n' + text.trim() : text.trim())
-        setImportedFile(file.name)
-        showToast(`已导入 ${file.name}（${text.length} 字）`, 'success')
-        textareaRef.current?.focus()
-      } else {
-        showToast('文件内容为空', 'error')
-      }
-    } catch (err) {
-      showToast('文件读取失败: ' + (err as Error).message, 'error')
-    }
+    if (file) await importFile(file)
     e.target.value = ''
   }
 
@@ -729,9 +712,13 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
                     : msg.content
 
                   const toolLabels: Record<string, string> = {
+                    crawl_data: '爬取平台数据',
+                    query_data: '查询本地数据',
                     analyze_script: '分析脚本结构',
                     expand_script: '生成各平台物料',
+                    suggest_topics: '生成选题建议',
                     save_result: '保存到数据库',
+                    request_user_input: '请求补充信息',
                   }
 
                   const isNewMsg = msg.id === messages[messages.length - 1]?.id

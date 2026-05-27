@@ -5,6 +5,8 @@ const path = require('path')
 const DB_PATH = path.join(__dirname, '..', 'knower.db')
 
 let db
+let _dirty = false
+let _saveTimer = null
 
 async function getDb() {
   if (!db) {
@@ -21,10 +23,34 @@ async function getDb() {
 }
 
 function saveDb() {
-  const data = db.export()
-  const buffer = Buffer.from(data)
-  fs.writeFileSync(DB_PATH, buffer)
+  _dirty = true
+  if (_saveTimer) return
+  _saveTimer = setTimeout(() => {
+    _saveTimer = null
+    if (!_dirty || !db) return
+    _dirty = false
+    const data = db.export()
+    const buffer = Buffer.from(data)
+    fs.writeFileSync(DB_PATH, buffer)
+  }, 2000)
 }
+
+function flushDb() {
+  if (_saveTimer) {
+    clearTimeout(_saveTimer)
+    _saveTimer = null
+  }
+  if (_dirty && db) {
+    _dirty = false
+    const data = db.export()
+    const buffer = Buffer.from(data)
+    fs.writeFileSync(DB_PATH, buffer)
+  }
+}
+
+process.on('exit', flushDb)
+process.on('SIGINT', () => { flushDb(); process.exit() })
+process.on('SIGTERM', () => { flushDb(); process.exit() })
 
 function initTables() {
   db.run(`
@@ -1091,7 +1117,7 @@ async function getRecentCrawlSummary() {
 }
 
 module.exports = {
-  getDb, saveScript, getScript, listScripts,
+  getDb, saveDb: flushDb, saveScript, getScript, listScripts,
   createConversation, updateConversationTitle, deleteConversation, togglePinConversation,
   listConversations, addMessage, getMessages, deleteMessage,
   upsertMemory, getMemories,

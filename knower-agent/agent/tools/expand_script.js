@@ -1,6 +1,18 @@
 module.exports = {
   name: 'expand_script',
-  description: '基于脚本分析结果，为各平台生成发布物料。调用时在 result 参数中填入完整的物料 JSON。',
+  description: `基于脚本分析结果，为各平台生成发布物料。这是"脚本->物料"流程的第二步（必须在 analyze_script 之后调用）。
+
+**什么时候必须调用：**
+- analyze_script 已完成，需要生成各平台物料
+- 用户说"生成物料"、"出标题"、"写文案"
+
+**什么时候不要调用：**
+- 还没有调用 analyze_script（必须先分析）
+- 用户只是想分析脚本，不需要生成物料
+
+**常见错误：**
+- 没有先调用 analyze_script 就直接调用 -> 不行，必须有分析结果
+- 物料不符合平台规范（标题太长、缺少钩子）-> 严格遵守平台规范`,
   input_schema: {
     type: 'object',
     properties: {

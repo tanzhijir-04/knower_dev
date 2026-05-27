@@ -3,7 +3,19 @@ const loadSettings = require('../../config')
 
 module.exports = {
   name: 'save_result',
-  description: '将脚本分析结果和生成的各平台物料存入本地 SQLite 数据库。调用时必须提供完整的 script、analysis 和 result 参数。',
+  description: `将脚本分析结果和生成的各平台物料存入本地 SQLite 数据库。这是"脚本->物料"流程的最后一步（必须在 expand_script 之后调用）。
+
+**什么时候必须调用：**
+- 已经生成了物料（调用了 expand_script），需要保存
+- 用户说"保存"、"记录一下"、"存起来"
+
+**什么时候不要调用：**
+- 还没有生成物料（没有 analyze_script + expand_script 的结果）
+- 用户明确说"不要保存"
+
+**常见错误：**
+- 物料不完整就保存 -> 必须有完整的 analysis + result
+- 忘记保存 -> 生成了物料就必须保存，除非用户说不要`,
   input_schema: {
     type: 'object',
     properties: {

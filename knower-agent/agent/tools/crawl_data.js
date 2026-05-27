@@ -2,7 +2,20 @@ const { runCrawler } = require('../../lib/crawler')
 
 module.exports = {
   name: 'crawl_data',
-  description: '爬取指定平台的公开数据。支持按关键词搜索或爬取创作者主页。',
+  description: `爬取指定平台的公开数据。支持按关键词搜索或爬取创作者主页。
+
+**什么时候必须调用：**
+- 用户提到"分析UP主/创作者/博主/账号" + 平台名或UID
+- 用户说"帮我看看这个人的数据"
+- 用户说"爬一下B站/抖音/小红书/微博的数据"
+
+**什么时候不要调用：**
+- 用户只是随口提到了一个平台名，但没有分析意图
+- 用户说"我之前爬过的数据"（应该用 query_data）
+
+**常见错误：**
+- 用户只说了"分析UP主"但没给UID -> 不要猜，先调用 request_user_input
+- 用户说"分析B站"但没给具体目标 -> 先确认是关键词搜索还是创作者主页`,
   input_schema: {
     type: 'object',
     properties: {

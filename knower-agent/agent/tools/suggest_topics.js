@@ -3,7 +3,18 @@ const loadSettings = require('../../config')
 
 module.exports = {
   name: 'suggest_topics',
-  description: '结合用户历史数据和平台趋势，生成个性化选题建议',
+  description: `结合用户历史数据和平台趋势，生成个性化选题建议。工具内部会自动查询历史数据和趋势。
+
+**什么时候必须调用：**
+- 用户说"选题"、"灵感"、"brainstorm"、"做什么内容"、"帮我想想"
+- 用户说"有什么好的选题"
+
+**什么时候不要调用：**
+- 用户只是在讨论某个具体话题（闲聊）
+- 用户说"分析这个选题好不好"（这不是生成选题，是评估）
+
+**常见错误：**
+- 用户说"推荐选题"但没说平台 -> 默认用 bilibili，但最好先确认`,
   input_schema: {
     type: 'object',
     properties: {

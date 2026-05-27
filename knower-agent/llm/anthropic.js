@@ -27,6 +27,7 @@ class AnthropicClient {
     return {
       content: response.content,
       stopReason: response.stop_reason,
+      usage: response.usage,
     }
   }
 
@@ -95,6 +96,7 @@ class AnthropicClient {
       stopReason: finalMessage.stop_reason,
       toolUseInputs,
       hasToolUse,
+      usage: finalMessage.usage,
     }
   }
 }

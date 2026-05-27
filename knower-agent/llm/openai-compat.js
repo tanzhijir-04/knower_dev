@@ -111,7 +111,7 @@ class OpenAICompatClient {
     }
 
     const stopReason = choice.finish_reason === 'tool_calls' ? 'tool_use' : 'end_turn'
-    return { content, stopReason }
+    return { content, stopReason, usage: data.usage }
   }
 
   async *stream({ system, messages, tools, maxTokens = 8096, signal }) {
@@ -144,6 +144,7 @@ class OpenAICompatClient {
     const toolCalls = {}
     let hasToolUse = false
     let textContent = ''
+    let streamUsage = null
 
     while (true) {
       const { done, value } = await reader.read()
@@ -164,6 +165,11 @@ class OpenAICompatClient {
 
         const delta = parsed.choices?.[0]?.delta
         if (!delta) continue
+
+        // Usage (may appear in last chunk)
+        if (parsed.usage) {
+          streamUsage = parsed.usage
+        }
 
         // Text content
         if (delta.content) {
@@ -222,6 +228,7 @@ class OpenAICompatClient {
       stopReason,
       toolUseInputs,
       hasToolUse,
+      usage: streamUsage,
     }
   }
 }
