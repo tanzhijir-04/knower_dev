@@ -54,3 +54,6 @@ knower-agent/crawler/mediasrc/*_user_data_dir/
 knower-agent/crawler/mediasrc/browser_data/
 knower-agent/crawler/mediasrc/database/sqlite_tables.db
 knower-agent/crawler/mediasrc/login_state/
+
+# Research (not for repo)
+virality-research/
