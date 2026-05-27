@@ -53,7 +53,6 @@ module.exports = {
               tags: { type: 'array', items: { type: 'string' } },
             },
           },
-          subtitles: { type: 'string', description: 'SRT 格式字幕稿' },
         },
       },
     },

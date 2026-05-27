@@ -4,17 +4,52 @@ const fs = require('fs')
 
 const ASSETS_DIR = path.join(__dirname, '..', 'assets')
 
+/**
+ * Generate an Apple-style squircle (superellipse n=5) SVG mask.
+ * White filled shape on transparent background — used with
+ * sharp composite 'dest-in' to cut transparent corners.
+ */
+function squircleMaskSvg(size) {
+  const cx = size / 2, cy = size / 2, r = size / 2
+  const n = 5 // Apple superellipse exponent
+  const steps = 120
+  const points = []
+
+  for (let i = 0; i <= steps; i++) {
+    const t = (Math.PI * 2 * i) / steps
+    const cosT = Math.cos(t), sinT = Math.sin(t)
+    const x = cx + r * Math.sign(cosT) * Math.pow(Math.abs(cosT), 2 / n)
+    const y = cy + r * Math.sign(sinT) * Math.pow(Math.abs(sinT), 2 / n)
+    points.push(`${x.toFixed(2)},${y.toFixed(2)}`)
+  }
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}">
+    <polygon points="${points.join(' ')}" fill="white"/>
+  </svg>`
+}
+
+/**
+ * Render icon SVG → PNG with squircle-masked transparent corners.
+ */
+async function renderIcon(size) {
+  const colorSvg = fs.readFileSync(path.join(ASSETS_DIR, 'logo-color.svg'))
+  const maskSvg = squircleMaskSvg(size)
+
+  const iconBuf = await sharp(colorSvg).resize(size, size).png().toBuffer()
+  const maskBuf = await sharp(Buffer.from(maskSvg)).resize(size, size).png().toBuffer()
+
+  return sharp(iconBuf)
+    .composite([{ input: maskBuf, blend: 'dest-in' }])
+    .png()
+    .toBuffer()
+}
+
 async function convert() {
   const sizes = [16, 32, 48, 64, 128, 256, 512, 1024]
 
-  // Convert color icon to multiple PNG sizes
-  const colorSvg = fs.readFileSync(path.join(ASSETS_DIR, 'logo-color.svg'))
-
   for (const size of sizes) {
-    await sharp(colorSvg)
-      .resize(size, size)
-      .png()
-      .toFile(path.join(ASSETS_DIR, `icon-${size}x${size}.png`))
+    const buf = await renderIcon(size)
+    await sharp(buf).toFile(path.join(ASSETS_DIR, `icon-${size}x${size}.png`))
     console.log(`Created icon-${size}x${size}.png`)
   }
 
@@ -22,22 +57,20 @@ async function convert() {
   const icoSizes = [16, 32, 48, 256]
   const icoBuffers = []
   for (const size of icoSizes) {
-    const buf = await sharp(colorSvg).resize(size, size).png().toBuffer()
+    const buf = await renderIcon(size)
     icoBuffers.push({ size, buf })
   }
 
-  // Build ICO manually
   const ico = buildICO(icoBuffers)
   fs.writeFileSync(path.join(ASSETS_DIR, 'icon.ico'), ico)
   console.log('Created icon.ico')
 
-  // Create ICNS for macOS (just use 512 and 1024 PNGs)
-  const png512 = await sharp(colorSvg).resize(512, 512).png().toBuffer()
-  const png1024 = await sharp(colorSvg).resize(1024, 1024).png().toBuffer()
-  // Simple ICNS: just wrap PNGs in icns container
+  // Create ICNS for macOS (512 and 1024)
+  const png512 = await renderIcon(512)
+  const png1024 = await renderIcon(1024)
   const icns = buildICNS([
-    { type: 'ic07', buf: png512 },   // 512x512
-    { type: 'ic08', buf: png1024 },  // 1024x1024
+    { type: 'ic07', buf: png512 },
+    { type: 'ic08', buf: png1024 },
   ])
   fs.writeFileSync(path.join(ASSETS_DIR, 'icon.icns'), icns)
   console.log('Created icon.icns')

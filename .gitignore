@@ -35,6 +35,9 @@ desktop.ini
 # Brand materials (design source files, not needed in repo)
 品牌物料/
 
+# Landing page (standalone, not part of Electron build)
+landing/
+
 # Claude Code memory files
 MEMORY.md
 db_issues.md
