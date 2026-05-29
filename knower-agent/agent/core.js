@@ -2,6 +2,9 @@ const { createClient } = require('../llm')
 const { tools } = require('./tools')
 const { getMemories } = require('../db')
 const { getCached, setCache } = require('./cache')
+const AgentState = require('./state')
+const { processToolResult, buildContextFromState, suggestNextTools } = require('./processor')
+const { determineNextAction } = require('./router')
 
 const MAX_ITERATIONS = 10
 const PROMPT_CACHE_KEY = 'system_prompt'
@@ -61,213 +64,139 @@ async function executeWithTimeout(fn, timeoutMs = 60000) {
 }
 
 function getToolTimeout(toolName) {
-  return toolName === 'crawl_data' ? 120000 : 30000
-}
-
-// ============================================================
-//  工具调用顺序检查
-// ============================================================
-
-const VALID_TOOL_PATHS = {
-  A: ['request_user_input', 'crawl_data'],
-  B: ['request_user_input', 'analyze_script', 'expand_script', 'save_result'],
-  C: ['suggest_topics'],
-  D: ['query_data'],
-}
-
-function checkToolCallOrder(toolName, calledTools) {
-  for (const [pathName, path] of Object.entries(VALID_TOOL_PATHS)) {
-    const toolIndex = path.indexOf(toolName)
-    if (toolIndex === -1) continue
-    for (let i = 0; i < toolIndex; i++) {
-      const requiredTool = path[i]
-      if (!calledTools.includes(requiredTool)) {
-        if (requiredTool === 'request_user_input') continue
-        console.log(`[Agent] 工具调用顺序警告：调用 ${toolName} 前应先调用 ${requiredTool}`)
-        return false
-      }
-    }
-    return true
-  }
-  return true
+  if (toolName === 'crawl_data' || toolName === 'crawl_data_batch') return 120000
+  return 30000
 }
 
 // ============================================================
 //  系统提示词
 // ============================================================
 
-const BASE_SYSTEM_PROMPT = `你是知更 AI，一个专为中文视频创作者服务的智能助手。你能帮助创作者完成从选题到发布的全流程工作。
+const BASE_SYSTEM_PROMPT = `你是知更 AI，一个专为中文视频创作者服务的智能助手。
 
-## 你的工具
+## 你的工作模式
 
-| 工具 | 用途 | 什么时候必须调用 |
-|------|------|-----------------|
-| crawl_data | 爬取平台公开数据（B站/抖音/小红书/微博） | 用户要分析创作者/账号/UP主时 |
-| query_data | 查询用户已有的爬取数据 | 用户要看"我的数据"时 |
-| analyze_script | 结构化分析脚本内容 | 有脚本要分析时 |
-| expand_script | 为各平台生成发布物料 | 分析完成后生成物料时 |
-| suggest_topics | 结合历史数据+趋势生成选题建议 | 用户要选题/灵感/brainstorm时 |
-| save_result | 将物料保存到本地数据库 | 生成了物料后必须保存 |
-| request_user_input | 向用户弹出表单请求补充信息 | 缺少必要信息时 |
+你在一个有状态的工作流中运行。系统会跟踪你的进度，你不需要自己管理状态。
 
-## 工具检查流程（必须遵守）
+### 工作阶段
+- **idle**: 空闲，等待用户指令
+- **crawling**: 正在爬取平台数据
+- **analyzing**: 正在分析脚本或数据
+- **generating**: 正在生成各平台物料
+- **saving**: 正在保存结果
 
-收到用户消息后，在回复之前，先走这个检查流程：
+### 上下文信息
+系统会在每次调用时提供当前状态的上下文信息（已爬取的数据、分析结果等），请基于这些信息做决策，不要重复调用已经完成的工具。
 
-1. 是否涉及「分析创作者/账号/UP主」？ -> 必须调用 crawl_data，不能编造数据
-2. 是否涉及「已爬取的数据/我的数据」？ -> 必须调用 query_data，不能猜
-3. 是否涉及「生成物料/脚本/标题/文案/选题」？ -> 有脚本先调 analyze_script，没脚本先用 request_user_input 要
-4. 是否涉及「选题/灵感/brainstorm」？ -> 调用 suggest_topics
-5. 是否涉及「保存/记录/沉淀」？ -> 必须调用 save_result
-6. 以上都不匹配 -> 自由对话（闲聊模式）
+## 工具检查流程
 
-## 红旗表（以下想法出现时，立即停下）
+收到用户消息后，检查当前状态上下文：
+1. 如果上下文中有爬取数据 → 直接分析，不要重新爬取
+2. 如果上下文中有分析结果 → 直接生成物料，不要重新分析
+3. 如果上下文中有物料 → 直接保存，不要重新生成
+4. 如果缺少必要信息 → 调用 request_user_input 请求
 
-- "用户没给UID，我猜一个" -> 不要猜，调用 request_user_input 要信息
-- "我知道这个UP主的数据" -> 你不知道，数据必须来自 crawl_data
-- "脚本我理解了，直接生成物料" -> 没有结构化分析就不能生成，先调 analyze_script
-- "用户没说要保存" -> 生成了物料就必须调 save_result
-- "数据是空的，我编一些" -> 绝对禁止编造数据，诚实说"暂无数据"
-- "工具太慢了，我直接答" -> 慢不是跳过的理由，告诉用户"正在获取"
-- "工具报错了，假装成功" -> 不要掩盖错误，告诉用户哪步失败了
+## 红旗表
+
+- "用户没给UID，我猜一个" -> 不要猜，调用 request_user_input
+- "我知道这个UP主的数据" -> 你不知道，看上下文中有没有爬取数据
+- "脚本我理解了，直接生成物料" -> 先调用 analyze_script，即使你觉得自己理解了
+- "数据是空的，我编一些" -> 绝对禁止编造数据
 - "这次不保存了吧" -> 必须保存，除非用户明确说不要
-
-## 工具调用路径（严格顺序执行）
-
-### 路径 A：分析创作者
-request_user_input（确认平台+UID/关键词）-> crawl_data -> 基于真实数据分析
-
-### 路径 B：脚本->物料
-request_user_input（如果没有脚本）-> analyze_script -> expand_script -> save_result
-
-### 路径 C：选题建议
-suggest_topics（自动查历史数据+趋势+偏好）-> 输出选题建议
-
-### 路径 D：查看数据
-query_data -> 输出数据概览
-
-每个路径内部严格顺序执行，每步等上一步完成后再进行下一步。
 
 ## 工具调用规则
 
-- 分析创作者时，必须先 crawl_data 获取数据，再基于数据分析，不要编造数据
-- 数据分析结果要具体引用数据（如"该UP主平均播放量 2.3 万"），不要泛泛而谈
-- 生成物料时，每个平台的标题/简介/标签要符合平台规范（字数限制、调性）
-- 保存结果时调用 save_result，让数据沉淀到知识库
-- 一次只调用一个工具，不要同时调用多个工具
+- 一次只调用一个工具，不要同时调用多个
+- 调用前检查：这个工具在当前阶段是否合理？
+- 调用后检查：结果是否符合预期？是否需要调整策略？
 
 ## 回复风格
 
 - 口语化、有温度，像一个懂创作的朋友
 - 分析类回复要数据驱动，引用具体数字
 - 物料类回复要实用可执行，用户能直接复制使用
-- 不要用 Markdown 表格展示物料（用户可能直接复制），用清晰的分段格式
-- 回复简洁有力，不要废话
-- 不要说"我是AI助手"之类的话
-- 不要在每句话后面加 emoji
-
-## 信息完整性检查
-
-执行任务前，检查是否有所需信息：
-- 分析创作者：需要平台 + UID 或关键词。如果缺失，调用 request_user_input 请求
-- 生成物料：需要脚本内容。如果缺失，调用 request_user_input 请求
-- 其他任务：通常信息已足够，直接执行
-
-## 错误处理
-
-当工具调用失败时：
-- 网络超时/限流 -> 告诉用户"平台暂时繁忙，稍后再试"
-- 爬取失败 -> 检查是否需要登录，提示用户
-- 数据为空 -> 说明该来源暂无数据，建议换关键词或平台
-- LLM 调用失败 -> 简要说明错误，建议用户检查 API Key
-- 不要把技术错误细节暴露给用户，用友好的语言描述
-
-## 任务规划
-
-收到复杂任务时，先在内部规划步骤，再逐步执行：
-1. 明确目标（用户要什么）
-2. 检查信息（够不够，缺什么）
-3. 选择路径（A/B/C/D）
-4. 按顺序执行工具调用
-5. 每步等上一步完成后再进行下一步
-6. 输出自检后回复
-
-示例："分析B站UP主 440609243 并给出选题建议"
-规划：路径 A + C
-1. request_user_input 确认 UID
-2. crawl_data 爬取数据
-3. 基于数据分析内容特征
-4. suggest_topics 结合分析给出选题建议
-
-示例："帮我分析这段脚本并生成物料，然后保存"
-规划：路径 B
-1. analyze_script 结构化分析
-2. expand_script 生成各平台物料
-3. save_result 保存到数据库
-4. 输出总结
-
-## 输出自检
-
-生成回复前，内部检查：
-- 分析类回复：是否引用了具体数据？数据是否来自工具返回（非编造）？
-- 物料类回复：标题字数是否符合平台规范？标签是否相关？
-- 选题建议：是否基于用户实际数据？建议是否具体可执行？
-- 如果自检不通过，修正后再输出
+- 不要用 Markdown 表格展示物料
 
 ## 各平台规范
 
 ### B站
-- 标题：<=80字，专业感+信息量，极客调性
-- 描述：<=200字，包含关键信息点
-- 标签：5-8个，混合热门+精准
+- 标题：<=80字，专业感+信息量
+- 描述：<=200字
+- 标签：5-8个
 
 ### YouTube
-- 标题：<=60字符，SEO友好，前置关键词
+- 标题：<=60字符，SEO友好
 - 描述：前两行最关键，含时间戳
 - 标签：5-15个，中英混合
 
 ### 抖音
 - 标题：<=55字，口语化有冲击力
-- 前3秒钩子：必须制造好奇/冲突/反转
-- 标签：3-5个，偏口语化
+- 前3秒钩子必须有
+- 标签：3-5个
 
 ### 小红书
 - 标题：<=20字，必须带emoji
-- 正文：口语化、像朋友聊天
-- 标签：5-8个，偏生活化`
+- 正文：口语化，像朋友聊天
+- 标签：5-8个`
 
-async function buildSystemPrompt() {
-  const cached = getCached(PROMPT_CACHE_KEY)
+async function buildSystemPrompt(opts = {}) {
+  const { contentStyle = '', scriptDuration = '', defaultLanguage = '' } = opts
+  const cacheKey = PROMPT_CACHE_KEY + ':' + [contentStyle, scriptDuration, defaultLanguage].join('|')
+  const cached = getCached(cacheKey)
   if (cached) return cached
 
   try {
     const memories = await getMemories('default')
-    if (!memories.length) return BASE_SYSTEM_PROMPT
+    let prompt = BASE_SYSTEM_PROMPT
 
-    const groups = {}
-    const typeLabels = {
-      style_preference: '风格偏好',
-      content_pattern: '内容规律',
-      platform_habit: '平台习惯',
+    if (memories.length) {
+      const groups = {}
+      const typeLabels = {
+        style_preference: '风格偏好',
+        content_pattern: '内容规律',
+        platform_habit: '平台习惯',
+      }
+
+      for (const mem of memories) {
+        const label = typeLabels[mem.type] || mem.type
+        if (!groups[label]) groups[label] = []
+        groups[label].push(`- ${mem.value}（依据：${mem.evidence}）`)
+      }
+
+      let section = '\n\n## 关于这位创作者的已知偏好\n'
+      for (const [label, items] of Object.entries(groups)) {
+        section += `\n### ${label}\n${items.join('\n')}\n`
+      }
+      prompt += section
     }
 
-    for (const mem of memories) {
-      const label = typeLabels[mem.type] || mem.type
-      if (!groups[label]) groups[label] = []
-      groups[label].push(`- ${mem.value}（依据：${mem.evidence}）`)
+    if (contentStyle) {
+      const styleMap = {
+        '专业严谨': '用专业、严谨的语气，注重数据和逻辑，避免口语化表达。',
+        '轻松活泼': '用轻松、活泼的语气，像朋友聊天一样自然，可以适当使用口语。',
+        '故事化': '用讲故事的方式表达，注重叙事节奏和情感起伏，让内容有代入感。',
+        '知识科普': '用知识科普的风格，注重信息密度和准确性，条理清晰。',
+        '情感共鸣': '用能引起情感共鸣的方式表达，注重情感连接和价值观传递。',
+      }
+      const styleDirective = styleMap[contentStyle]
+      if (styleDirective) {
+        prompt += `\n\n## 内容风格要求\n${styleDirective}`
+      }
     }
 
-    let section = '\n\n## 关于这位创作者的已知偏好\n'
-    for (const [label, items] of Object.entries(groups)) {
-      section += `\n### ${label}\n${items.join('\n')}\n`
+    if (scriptDuration) {
+      prompt += `\n\n## 脚本时长要求\n用户偏好的视频时长为 ${scriptDuration}，生成物料时请据此调整内容密度和节奏。`
     }
 
-    const prompt = BASE_SYSTEM_PROMPT + section
-    setCache(PROMPT_CACHE_KEY, prompt)
+    if (defaultLanguage && defaultLanguage !== '简体中文') {
+      prompt += `\n\n## 语言要求\n请使用 ${defaultLanguage} 回复和生成物料。`
+    }
+
+    setCache(cacheKey, prompt)
     return prompt
   } catch (err) {
     console.error('[Agent] 读取记忆失败，使用基础 Prompt:', err)
-    setCache(PROMPT_CACHE_KEY, BASE_SYSTEM_PROMPT)
+    setCache(cacheKey, BASE_SYSTEM_PROMPT)
     return BASE_SYSTEM_PROMPT
   }
 }
@@ -280,8 +209,12 @@ class Agent {
   constructor(config) {
     this.client = createClient(config)
     this.model = config.model
+    this.temperature = config.temperature ?? 0.7
+    this.maxTokens = config.maxTokens ?? 4096
+    this.contentStyle = config.contentStyle || ''
+    this.scriptDuration = config.scriptDuration || ''
+    this.defaultLanguage = config.defaultLanguage || ''
     this._pendingFormResolve = null
-    this._calledTools = []
     this.usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
   }
 
@@ -306,22 +239,35 @@ class Agent {
   }
 
   async run(userInput, options = {}) {
-    const { platforms = ['bilibili', 'douyin', 'xiaohongshu'], onToolCall, onText } = options
+    const { onToolCall, onText } = options
+
+    const state = new AgentState()
+    state.metadata.targetPlatforms = options.platforms || ['bilibili', 'douyin', 'xiaohongshu']
 
     const messages = [{ role: 'user', content: userInput }]
-    const systemPrompt = await buildSystemPrompt()
-    let finalResult = null
-    this._calledTools = []
+    const systemPrompt = await buildSystemPrompt({
+      contentStyle: this.contentStyle,
+      scriptDuration: this.scriptDuration,
+      defaultLanguage: this.defaultLanguage,
+    })
     this.resetUsage()
     let iterations = 0
 
     while (iterations < MAX_ITERATIONS) {
       iterations++
+      state.metadata.iterationCount = iterations
+
+      const contextFromState = buildContextFromState(state)
+      const fullPrompt = contextFromState
+        ? systemPrompt + '\n\n' + contextFromState
+        : systemPrompt
 
       const response = await this.client.chat({
-        system: systemPrompt,
+        system: fullPrompt,
         messages,
         tools,
+        maxTokens: this.maxTokens,
+        temperature: this.temperature,
       })
 
       this._trackUsage(response.usage)
@@ -332,91 +278,107 @@ class Agent {
         }
       }
 
-      if (response.stopReason === 'end_turn') {
-        const textBlocks = response.content.filter((b) => b.type === 'text')
-        finalResult = textBlocks.map((b) => b.text).join('\n')
-        break
-      }
+      const nextAction = determineNextAction(state, response)
 
-      if (response.stopReason === 'tool_use') {
-        messages.push({ role: 'assistant', content: response.content })
+      switch (nextAction.type) {
+        case 'execute_tools': {
+          messages.push({ role: 'assistant', content: response.content })
+          const toolResults = []
 
-        const toolUseBlocks = response.content.filter((b) => b.type === 'tool_use')
-        const toolResults = []
+          for (const block of nextAction.tools) {
+            if (onToolCall) onToolCall(block.name, block.input)
 
-        for (const toolBlock of toolUseBlocks) {
-          if (onToolCall) {
-            onToolCall(toolBlock.name, toolBlock.input)
-          }
+            const tool = tools.find(t => t.name === block.name)
+            let result
 
-          checkToolCallOrder(toolBlock.name, this._calledTools)
-
-          const tool = tools.find((t) => t.name === toolBlock.name)
-          let result
-
-          if (tool) {
-            try {
-              result = await executeWithTimeout(
-                () => executeToolWithRetry(tool, toolBlock.input),
-                getToolTimeout(toolBlock.name)
-              )
-              if (result.formRequest) {
-                const formData = await new Promise((resolve) => {
-                  this._pendingFormResolve = resolve
-                })
-                result = { success: true, data: formData }
+            if (tool) {
+              try {
+                result = await executeWithTimeout(
+                  () => executeToolWithRetry(tool, block.input),
+                  getToolTimeout(block.name)
+                )
+                if (result.formRequest) {
+                  const formData = await new Promise(resolve => {
+                    this._pendingFormResolve = resolve
+                  })
+                  result = { success: true, data: formData }
+                }
+              } catch (err) {
+                result = { error: err.message }
+                state.errors.push(`${block.name} 执行失败: ${err.message}`)
               }
-            } catch (err) {
-              console.error(`[Agent] Tool "${toolBlock.name}" failed:`, err)
-              result = { error: err.message }
+            } else {
+              result = { error: `Unknown tool: ${block.name}` }
             }
-          } else {
-            console.error(`[Agent] Unknown tool: ${toolBlock.name}`)
-            result = { error: `Unknown tool: ${toolBlock.name}` }
+
+            processToolResult(block.name, result, state)
+
+            toolResults.push({
+              type: 'tool_result',
+              tool_use_id: block.id,
+              content: JSON.stringify(result),
+            })
           }
 
-          this._calledTools.push(toolBlock.name)
-
-          toolResults.push({
-            type: 'tool_result',
-            tool_use_id: toolBlock.id,
-            content: JSON.stringify(result),
-          })
+          messages.push({ role: 'user', content: toolResults })
+          break
         }
 
-        messages.push({ role: 'user', content: toolResults })
-      } else {
-        break
+        case 'handle_error': {
+          const errorText = response.content.filter(b => b.type === 'text').map(b => b.text).join('\n')
+          return errorText || '任务执行遇到了一些问题，请重试。'
+        }
+
+        case 'auto_analyze':
+        case 'auto_generate':
+        case 'auto_save':
+          break
+
+        case 'done': {
+          const finalText = response.content.filter(b => b.type === 'text').map(b => b.text).join('\n')
+          return finalText
+        }
+
+        case 'continue':
+          break
       }
     }
 
-    if (iterations >= MAX_ITERATIONS && !finalResult) {
-      finalResult = '抱歉，任务执行步骤过多，已自动终止。请尝试简化你的请求。'
-      console.warn(`[Agent] 达到最大迭代次数 ${MAX_ITERATIONS}，强制终止`)
-    }
-
-    return finalResult
+    return '抱歉，任务执行步骤过多，已自动终止。请尝试简化你的请求。'
   }
 
   async *stream(userInput, options = {}) {
-    const { platforms = ['bilibili', 'douyin', 'xiaohongshu'], signal } = options
+    const { signal } = options
+
+    const state = new AgentState()
+    state.metadata.targetPlatforms = options.platforms || ['bilibili', 'douyin', 'xiaohongshu']
 
     const messages = [{ role: 'user', content: userInput }]
-    const systemPrompt = await buildSystemPrompt()
-    let inToolPhase = false
-    this._calledTools = []
+    const systemPrompt = await buildSystemPrompt({
+      contentStyle: this.contentStyle,
+      scriptDuration: this.scriptDuration,
+      defaultLanguage: this.defaultLanguage,
+    })
     this.resetUsage()
     let iterations = 0
 
     while (iterations < MAX_ITERATIONS) {
       iterations++
+      state.metadata.iterationCount = iterations
 
       if (signal?.aborted) return
 
+      const contextFromState = buildContextFromState(state)
+      const fullPrompt = contextFromState
+        ? systemPrompt + '\n\n' + contextFromState
+        : systemPrompt
+
       const stream = this.client.stream({
-        system: systemPrompt,
+        system: fullPrompt,
         messages,
         tools,
+        maxTokens: this.maxTokens,
+        temperature: this.temperature,
         signal,
       })
 
@@ -424,7 +386,7 @@ class Agent {
 
       for await (const event of stream) {
         if (event.type === 'text') {
-          if (!event.hasToolUse && !inToolPhase) {
+          if (!event.hasToolUse) {
             yield { type: 'text', text: event.text }
           }
         } else if (event.type === 'final') {
@@ -438,7 +400,7 @@ class Agent {
 
       if (finalEvent.stopReason === 'end_turn') {
         if (!finalEvent.hasToolUse) {
-          const textBlocks = finalEvent.content.filter((b) => b.type === 'text')
+          const textBlocks = finalEvent.content.filter(b => b.type === 'text')
           for (const block of textBlocks) {
             yield { type: 'text', text: block.text }
           }
@@ -447,7 +409,6 @@ class Agent {
       }
 
       if (finalEvent.stopReason === 'tool_use') {
-        inToolPhase = true
         messages.push({ role: 'assistant', content: finalEvent.content })
 
         const toolResults = []
@@ -456,9 +417,7 @@ class Agent {
             const input = finalEvent.toolUseInputs[block.id]?.input || block.input
             yield { type: 'tool_call', name: block.name, input }
 
-            checkToolCallOrder(block.name, this._calledTools)
-
-            const tool = tools.find((t) => t.name === block.name)
+            const tool = tools.find(t => t.name === block.name)
             let result
             if (tool) {
               try {
@@ -468,21 +427,20 @@ class Agent {
                 )
                 if (result.formRequest) {
                   yield { type: 'form_request', message: result.message, fields: result.fields }
-                  const formData = await new Promise((resolve) => {
+                  const formData = await new Promise(resolve => {
                     this._pendingFormResolve = resolve
                   })
                   result = { success: true, data: formData }
                 }
               } catch (err) {
-                console.error(`[Agent] Tool "${block.name}" failed:`, err)
                 result = { error: err.message }
+                state.errors.push(`${block.name} 执行失败: ${err.message}`)
               }
             } else {
-              console.error(`[Agent] Unknown tool: ${block.name}`)
               result = { error: `Unknown tool: ${block.name}` }
             }
 
-            this._calledTools.push(block.name)
+            processToolResult(block.name, result, state)
 
             yield { type: 'tool_result', name: block.name, result }
             toolResults.push({
