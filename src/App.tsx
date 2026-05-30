@@ -6,6 +6,7 @@ import DataView from './components/DataView'
 import SettingsView from './components/SettingsView'
 import { ToastProvider } from './contexts/ToastContext'
 import { PlatformProvider } from './contexts/PlatformContext'
+import { AccountProvider } from './contexts/AccountContext'
 import { pageEnter, pageExit } from './lib/gsap'
 import { Minus, Square, X } from '@phosphor-icons/react'
 import type { TopicSuggestion } from './types/electron'
@@ -83,60 +84,62 @@ export default function App() {
   return (
     <ToastProvider>
       <PlatformProvider>
-        <div className="flex h-screen bg-canvas">
-          <Sidebar
-            currentPage={currentPage}
-            onNavigate={navigateTo}
-            conversationVersion={conversationVersion}
-            onOpenConversation={(id) => {
-              setOpenConversationId(id)
-              navigateTo('chat')
-            }}
-          />
-          <div className="flex-1 flex flex-col overflow-hidden">
-            {/* Windows/Linux 标题栏：拖拽区域 + 窗口按钮，同级 flex row */}
-            {isWindows && (
-              <div className="h-12 flex items-stretch shrink-0 border-b border-hairline">
-                <div className="titlebar-drag flex-1" />
-                <div className="flex items-center gap-0.5 px-2 shrink-0 no-drag">
-                  <button onClick={() => window.electronAPI?.minimizeWindow()}
-                    className="w-11 h-8 rounded flex items-center justify-center text-muted hover:bg-hairline hover:text-ink transition-colors">
-                    <Minus className="w-4 h-4" />
-                  </button>
-                  <button onClick={() => window.electronAPI?.maximizeWindow()}
-                    className="w-11 h-8 rounded flex items-center justify-center text-muted hover:bg-hairline hover:text-ink transition-colors">
-                    <Square className="w-3.5 h-3.5" />
-                  </button>
-                  <button onClick={() => window.electronAPI?.closeWindow()}
-                    className="w-11 h-8 rounded flex items-center justify-center text-muted hover:bg-red-500 hover:text-white transition-colors">
-                    <X className="w-4 h-4" />
-                  </button>
+        <AccountProvider>
+          <div className="flex h-screen bg-canvas">
+            <Sidebar
+              currentPage={currentPage}
+              onNavigate={navigateTo}
+              conversationVersion={conversationVersion}
+              onOpenConversation={(id) => {
+                setOpenConversationId(id)
+                navigateTo('chat')
+              }}
+            />
+            <div className="flex-1 flex flex-col overflow-hidden">
+              {/* Windows/Linux 标题栏：拖拽区域 + 窗口按钮，同级 flex row */}
+              {isWindows && (
+                <div className="h-12 flex items-stretch shrink-0 border-b border-hairline">
+                  <div className="titlebar-drag flex-1" />
+                  <div className="flex items-center gap-0.5 px-2 shrink-0 no-drag">
+                    <button onClick={() => window.electronAPI?.minimizeWindow()}
+                      className="w-11 h-8 rounded flex items-center justify-center text-muted hover:bg-hairline hover:text-ink transition-colors">
+                      <Minus className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => window.electronAPI?.maximizeWindow()}
+                      className="w-11 h-8 rounded flex items-center justify-center text-muted hover:bg-hairline hover:text-ink transition-colors">
+                      <Square className="w-3.5 h-3.5" />
+                    </button>
+                    <button onClick={() => window.electronAPI?.closeWindow()}
+                      className="w-11 h-8 rounded flex items-center justify-center text-muted hover:bg-red-500 hover:text-white transition-colors">
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* 所有页面始终挂载，用 display 控制显示 */}
-            <div ref={el => { pageRefs.current.chat = el }} style={pageStyle('chat')}>
-              <ChatView
-                pendingTopic={pendingTopic}
-                onTopicConsumed={() => setPendingTopic(null)}
-                initialConversationId={openConversationId}
-                onConversationOpened={() => setOpenConversationId(null)}
-                onNavigate={navigateTo}
-                onConversationChange={() => setConversationVersion(v => v + 1)}
-              />
-            </div>
-            <div ref={el => { pageRefs.current.data = el }} style={pageStyle('data')}>
-              <DataView />
-            </div>
-            <div ref={el => { pageRefs.current.topics = el }} style={pageStyle('topics')}>
-              <TopicsView onSendToChat={handleSendTopicToChat} />
-            </div>
-            <div ref={el => { pageRefs.current.settings = el }} style={pageStyle('settings')}>
-              <SettingsView />
+              {/* 所有页面始终挂载，用 display 控制显示 */}
+              <div ref={el => { pageRefs.current.chat = el }} style={pageStyle('chat')}>
+                <ChatView
+                  pendingTopic={pendingTopic}
+                  onTopicConsumed={() => setPendingTopic(null)}
+                  initialConversationId={openConversationId}
+                  onConversationOpened={() => setOpenConversationId(null)}
+                  onNavigate={navigateTo}
+                  onConversationChange={() => setConversationVersion(v => v + 1)}
+                />
+              </div>
+              <div ref={el => { pageRefs.current.data = el }} style={pageStyle('data')}>
+                <DataView />
+              </div>
+              <div ref={el => { pageRefs.current.topics = el }} style={pageStyle('topics')}>
+                <TopicsView onSendToChat={handleSendTopicToChat} />
+              </div>
+              <div ref={el => { pageRefs.current.settings = el }} style={pageStyle('settings')}>
+                <SettingsView />
+              </div>
             </div>
           </div>
-        </div>
+        </AccountProvider>
       </PlatformProvider>
     </ToastProvider>
   )

@@ -5,6 +5,7 @@ import type { ComponentType } from 'react'
 import type { Page } from '../App'
 import type { Message } from '../types/electron'
 import logoSvg from '../../assets/logo-sidebar.svg?url'
+import AccountSwitcher from './AccountSwitcher'
 
 interface SidebarProps {
   currentPage: Page
@@ -326,6 +327,13 @@ export default function Sidebar({ currentPage, onNavigate, onOpenConversation, c
         </div>
 
       </div>
+
+      {/* Account Switcher */}
+      {!collapsed && (
+        <div className="px-3 pt-2">
+          <AccountSwitcher onNavigate={onNavigate} />
+        </div>
+      )}
 
       {/* Navigation */}
       <nav className={`flex flex-col gap-0.5 pt-4 overflow-hidden ${collapsed ? 'px-2' : 'px-3'}`}>

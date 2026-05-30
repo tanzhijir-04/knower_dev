@@ -89,6 +89,37 @@ ipcMain.handle('window-maximize', () => {
 ipcMain.handle('window-close', () => mainWindow?.close())
 
 // ============================================================
+//  账号管理
+// ============================================================
+
+ipcMain.handle('account-list', async () => {
+  return await db.listAccounts()
+})
+
+ipcMain.handle('account-get-active', async () => {
+  return await db.getActiveAccount()
+})
+
+ipcMain.handle('account-create', async (_event, data: { name: string; platform: string; uid?: string; avatarUrl?: string; description?: string }) => {
+  return await db.createAccount(data)
+})
+
+ipcMain.handle('account-switch', async (_event, id: string) => {
+  await db.switchAccount(id)
+  return true
+})
+
+ipcMain.handle('account-update', async (_event, id: string, updates: Record<string, unknown>) => {
+  await db.updateAccount(id, updates)
+  return true
+})
+
+ipcMain.handle('account-delete', async (_event, id: string) => {
+  await db.deleteAccount(id)
+  return true
+})
+
+// ============================================================
 //  Settings 持久化
 // ============================================================
 
@@ -138,6 +169,7 @@ ipcMain.handle('agent-run', async (event, script: string, platforms: string[], c
   agentLock = true
 
   const settings = readSettings()
+  const activeAccount = await db.getActiveAccount()
   const agent = new Agent({
     apiKey: settings.apiKey as string,
     model: (settings.model as string) || 'claude-sonnet-4-20250514',
@@ -148,6 +180,10 @@ ipcMain.handle('agent-run', async (event, script: string, platforms: string[], c
     contentStyle: (settings.contentStyle as string) || '',
     scriptDuration: (settings.scriptDuration as string) || '',
     defaultLanguage: (settings.defaultLanguage as string) || '',
+    accountId: activeAccount?.id || 'default',
+    accountName: activeAccount?.name || '',
+    accountPlatform: activeAccount?.platform || '',
+    accountUid: activeAccount?.uid || '',
   })
   currentAgent = agent
 
@@ -180,7 +216,7 @@ ipcMain.handle('agent-run', async (event, script: string, platforms: string[], c
   }
 
   // 注入用户爬取数据摘要
-  const dataSummary = await db.getRecentCrawlSummary()
+  const dataSummary = await db.getRecentCrawlSummary(activeAccount?.id || 'default')
   let fullPrompt = dataSummary
     ? `## 你的账号数据摘要\n${dataSummary}\n\n## 任务\n${prompt}\n\n请参考上面的数据来优化建议。`
     : prompt
@@ -190,7 +226,7 @@ ipcMain.handle('agent-run', async (event, script: string, platforms: string[], c
   if (uidMatch) {
     const uid = uidMatch[1]
     try {
-      const detail = await db.getSourceDetail(uid)
+      const detail = await db.getSourceDetail(uid, undefined, activeAccount?.id || 'default')
       if (detail.length > 0) {
         const dataStr = detail.map((v: { title: string; playCount: number; likeCount: number; commentCount: number }, i: number) =>
           `${i + 1}. "${v.title}" | 播放:${v.playCount} | 点赞:${v.likeCount} | 评论:${v.commentCount}`
@@ -246,11 +282,13 @@ ipcMain.handle('agent-stop', () => {
 const db = require('../knower-agent/db')
 
 ipcMain.handle('conv-list', async () => {
-  return await db.listConversations()
+  const active = await db.getActiveAccount()
+  return await db.listConversations(50, active?.id || 'default')
 })
 
 ipcMain.handle('conv-create', async (_event, title: string) => {
-  return await db.createConversation(title)
+  const active = await db.getActiveAccount()
+  return await db.createConversation(title, active?.id || 'default')
 })
 
 ipcMain.handle('conv-delete', async (_event, id: number) => {
@@ -283,7 +321,8 @@ ipcMain.handle('conv-toggle-pin', async (_event, id: number) => {
 })
 
 ipcMain.handle('search-messages', async (_event, query: string) => {
-  const conversations = await db.listConversations()
+  const active = await db.getActiveAccount()
+  const conversations = await db.listConversations(50, active?.id || 'default')
   const results: { convId: number; convTitle: string; matches: { role: string; content: string }[] }[] = []
   for (const conv of conversations) {
     const messages = await db.getMessages(conv.id)
@@ -310,7 +349,8 @@ ipcMain.handle('crawler-run', async (event, platform: string, keywords: string, 
     const result = await runCrawler(platform, keywords, options, (msg: string) => {
       event.sender.send('crawler-event', JSON.stringify({ type: 'progress', message: msg }))
     })
-    const taskId = await db.saveCrawlTask(platform, keywords, options.crawlerType as string || 'search', 'done', JSON.stringify(result))
+    const active = await db.getActiveAccount()
+    const taskId = await db.saveCrawlTask(platform, keywords, options.crawlerType as string || 'search', 'done', JSON.stringify(result), active?.id || 'default')
 
     // 确定来源信息
     let sourceUid = ''
@@ -345,7 +385,7 @@ ipcMain.handle('crawler-run', async (event, platform: string, keywords: string, 
         || result.creators?.[0]?.avatar_url
         || ''
       const totalFans = parseInt(result.creators?.[0]?.total_fans) || 0
-      await db.saveCreator(sourceUid, creatorName, creatorAvatar, totalFans)
+      await db.saveCreator(sourceUid, creatorName, creatorAvatar, totalFans, accountId)
     }
     if (result.creators && result.creators.length > 0) {
       await db.saveCrawlCreatorsBatch(taskId, platform, result.creators)
@@ -360,7 +400,8 @@ ipcMain.handle('crawler-run', async (event, platform: string, keywords: string, 
 })
 
 ipcMain.handle('crawler-tasks', async () => {
-  return await db.getCrawlTasks()
+  const active = await db.getActiveAccount()
+  return await db.getCrawlTasks(50, active?.id || 'default')
 })
 
 ipcMain.handle('crawler-content', async (_event, taskId: number) => {
@@ -372,23 +413,28 @@ ipcMain.handle('crawler-creators', async (_event, taskId: number) => {
 })
 
 ipcMain.handle('get-sources', async (_event, platform: string) => {
-  return await db.getSourceList(platform || null)
+  const active = await db.getActiveAccount()
+  return await db.getSourceList(platform || null, active?.id || 'default')
 })
 
 ipcMain.handle('get-videos-by-source', async (_event, platform: string, sourceUid: string) => {
-  return await db.getVideosBySource(platform || 'bili', sourceUid || '')
+  const active = await db.getActiveAccount()
+  return await db.getVideosBySource(platform || 'bili', sourceUid || '', active?.id || 'default')
 })
 
 ipcMain.handle('get-all-crawl-content', async (_event, platform?: string) => {
-  return await db.getAllCrawlContent(platform || null)
+  const active = await db.getActiveAccount()
+  return await db.getAllCrawlContent(platform || null, active?.id || 'default')
 })
 
 ipcMain.handle('source-detail', async (_event, sourceUid: string, platform?: string) => {
-  return await db.getSourceDetail(sourceUid, platform || null)
+  const active = await db.getActiveAccount()
+  return await db.getSourceDetail(sourceUid, platform || null, active?.id || 'default')
 })
 
 ipcMain.handle('keyword-detail', async (_event, keyword: string, platform?: string) => {
-  return await db.getKeywordDetail(keyword, platform || null)
+  const active = await db.getActiveAccount()
+  return await db.getKeywordDetail(keyword, platform || null, active?.id || 'default')
 })
 
 // ============================================================
@@ -541,32 +587,38 @@ ipcMain.handle('clear-login-state', async (_event, platform: string) => {
 })
 
 ipcMain.handle('get-creators', async () => {
-  return await db.getCreators()
+  const active = await db.getActiveAccount()
+  return await db.getCreators(active?.id || 'default')
 })
 
 ipcMain.handle('star-creator', async (_event, uid: string) => {
-  await db.starCreator(uid)
+  const active = await db.getActiveAccount()
+  await db.starCreator(uid, active?.id || 'default')
   return true
 })
 
 ipcMain.handle('pin-creator', async (_event, uid: string) => {
-  await db.pinCreator(uid)
+  const active = await db.getActiveAccount()
+  await db.pinCreator(uid, active?.id || 'default')
   return true
 })
 
 ipcMain.handle('delete-creator', async (_event, uid: string) => {
-  await db.deleteCreator(uid)
+  const active = await db.getActiveAccount()
+  await db.deleteCreator(uid, active?.id || 'default')
   return true
 })
 
 ipcMain.handle('export-source-data', async (_event, sourceUid: string) => {
+  const active = await db.getActiveAccount()
+  const accountId = active?.id || 'default'
   // 从所有平台中查找该 sourceUid 的数据
   let videos: Record<string, unknown>[] = []
   for (const p of ['bili', 'dy', 'xhs', 'wb']) {
-    const found = await db.getVideosBySource(p, sourceUid)
+    const found = await db.getVideosBySource(p, sourceUid, accountId)
     if (found.length) { videos = found; break }
   }
-  const creators = await db.getCreators()
+  const creators = await db.getCreators(accountId)
   const creator = creators.find((c: { uid: string }) => c.uid === sourceUid)
   const exportData = {
     source: {
@@ -602,21 +654,23 @@ ipcMain.handle('export-source-data', async (_event, sourceUid: string) => {
 
 ipcMain.handle('analyze-video-data', async (_event, platform: string, sourceUid?: string) => {
   const settings = readSettings()
-  console.log(`[Analysis] 开始分析 platform=${platform} sourceUid=${sourceUid || '(全部)'}`)
+  const active = await db.getActiveAccount()
+  const accountId = active?.id || 'default'
+  console.log(`[Analysis] 开始分析 platform=${platform} sourceUid=${sourceUid || '(全部)'} accountId=${accountId}`)
 
   // 1. 先查数据库缓存
-  const cached = await db.getVideoAnalysis(platform || 'bili', sourceUid || '')
+  const cached = await db.getVideoAnalysis(platform || 'bili', sourceUid || '', accountId)
   if (cached) {
     const videos = sourceUid
-      ? await db.getVideosBySource(platform || 'bili', sourceUid)
-      : await db.getAllCrawlContent(platform || 'bili')
+      ? await db.getVideosBySource(platform || 'bili', sourceUid, accountId)
+      : await db.getAllCrawlContent(platform || 'bili', accountId)
     console.log(`[Analysis] 命中缓存，视频数=${videos.length} 缓存数=${cached.videoCount}`)
     if (videos.length === cached.videoCount) {
       // 从 creators 表补全粉丝数
       let fans = cached.analysis.fans || 0
       if (!fans && sourceUid) {
         try {
-          const creatorsList = await db.getCreators()
+          const creatorsList = await db.getCreators(accountId)
           const match = creatorsList.find((c: { uid: string }) => c.uid === sourceUid || sourceUid.startsWith(c.uid))
           if (match) fans = (match as { totalFans?: number }).totalFans || 0
         } catch { /* ignore */ }
@@ -624,12 +678,12 @@ ipcMain.handle('analyze-video-data', async (_event, platform: string, sourceUid?
       return { ...cached.analysis, overview: cached.overview, fans }
     }
     // 数据数量变化，清除旧缓存
-    await db.deleteVideoAnalysis(platform || 'bili', sourceUid || '')
+    await db.deleteVideoAnalysis(platform || 'bili', sourceUid || '', accountId)
   }
 
   const videos = sourceUid
-    ? await db.getVideosBySource(platform || 'bili', sourceUid)
-    : await db.getAllCrawlContent(platform || 'bili')
+    ? await db.getVideosBySource(platform || 'bili', sourceUid, accountId)
+    : await db.getAllCrawlContent(platform || 'bili', accountId)
   if (!videos.length) {
     console.log('[Analysis] 无视频数据，跳过分析')
     return null
@@ -670,7 +724,7 @@ ipcMain.handle('analyze-video-data', async (_event, platform: string, sourceUid?
     : 0
 
   // 查找粉丝数
-  const creators = await db.getCreators()
+  const creators = await db.getCreators(accountId)
   const matchingCreator = creators.find((c: { uid: string }) => {
     const srcUid = sourceUid || ''
     return c.uid === srcUid || srcUid.startsWith(c.uid)
@@ -769,7 +823,7 @@ ${videoDataStr}
   }
 
   // 3. 存入数据库缓存
-  await db.saveVideoAnalysis(platform || 'bili', sourceUid || '', result, enriched.length, overview)
+  await db.saveVideoAnalysis(platform || 'bili', sourceUid || '', result, enriched.length, overview, accountId)
   console.log(`[Analysis] 分析完成并缓存，视频数=${enriched.length} 总播放=${totalPlay}`)
 
   return result
@@ -781,7 +835,8 @@ ${videoDataStr}
 
 ipcMain.handle('auto-categorize', async (_event, platform: string) => {
   const settings = readSettings()
-  const videos = await db.getAllCrawlContent(platform || 'bili')
+  const active = await db.getActiveAccount()
+  const videos = await db.getAllCrawlContent(platform || 'bili', active?.id || 'default')
   if (!videos.length) return { success: false, error: '暂无视频数据' }
 
   const uncategorized = videos.filter((v: { category?: string }) => !v.category || v.category === '未分类')
@@ -870,7 +925,8 @@ ${videoList}
 })
 
 ipcMain.handle('get-categories', async (_event, platform: string) => {
-  return await db.getAllCategories(platform || null)
+  const active = await db.getActiveAccount()
+  return await db.getAllCategories(platform || null, active?.id || 'default')
 })
 
 ipcMain.handle('update-category', async (_event, contentId: string, category: string) => {
@@ -887,14 +943,17 @@ let pendingTopic: Record<string, unknown> | null = null
 ipcMain.handle('topics-suggest', async (_event, platform: string) => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const suggestTool = require('../knower-agent/agent/tools/suggest_topics')
-  return await suggestTool.execute({ platform, count: 5 })
+  const active = await db.getActiveAccount()
+  return await suggestTool.execute({ platform, count: 5, accountId: active?.id || 'default' })
 })
 
 ipcMain.handle('topics-trends', async (_event, platform: string) => {
-  return await db.getRecentTrends(platform || 'bili', 7)
+  const active = await db.getActiveAccount()
+  return await db.getRecentTrends(platform || 'bili', 7, active?.id || 'default')
 })
 
 ipcMain.handle('topics-save', async (_event, topic: Record<string, unknown>) => {
+  const active = await db.getActiveAccount()
   await db.saveTopic(
     topic.platform as string,
     topic.title as string,
@@ -903,12 +962,14 @@ ipcMain.handle('topics-save', async (_event, topic: Record<string, unknown>) => 
     topic.estimatedPerformance as string,
     topic.tags as string[],
     topic.fullData as Record<string, unknown>,
+    active?.id || 'default',
   )
   return true
 })
 
 ipcMain.handle('topics-saved', async (_event, platform?: string) => {
-  return await db.getSavedTopics(platform || null)
+  const active = await db.getActiveAccount()
+  return await db.getSavedTopics(platform || null, active?.id || 'default')
 })
 
 ipcMain.handle('topic-to-chat', async (_event, topic: Record<string, unknown>) => {

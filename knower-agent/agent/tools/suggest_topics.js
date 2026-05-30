@@ -23,11 +23,12 @@ module.exports = {
     },
     required: ['platform'],
   },
-  async execute({ platform, count = 5 }) {
+  async execute({ platform, count = 5, accountId }) {
     try {
-      const topContent = await getTopContent(platform, 20)
-      const trends = await getRecentTrends(platform, 7)
-      const memories = await getMemories('default')
+      const aid = accountId || 'default'
+      const topContent = await getTopContent(platform, 20, aid)
+      const trends = await getRecentTrends(platform, 7, aid)
+      const memories = await getMemories(aid)
 
       const settings = loadSettings()
       if (!settings.apiKey) {

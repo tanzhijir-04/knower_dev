@@ -1,4 +1,5 @@
 const { runCrawler } = require('../../lib/crawler')
+const db = require('../../db')
 
 module.exports = {
   name: 'crawl_data',
@@ -39,7 +40,7 @@ module.exports = {
     },
     required: ['platform'],
   },
-  async execute({ platform, keyword, creatorUid, maxNotes }) {
+  async execute({ platform, keyword, creatorUid, maxNotes, accountId, onProgress }) {
     const options = { maxNotes: maxNotes || 15 }
 
     if (creatorUid) {
@@ -52,10 +53,34 @@ module.exports = {
     }
 
     try {
-      const result = await runCrawler(platform, keyword || '', options)
+      const result = await runCrawler(platform, keyword || '', options, onProgress)
+
+      // 保存到数据库
+      const taskId = await db.saveCrawlTask(platform, keyword || creatorUid || '', 'agent_crawl', 'completed', '', accountId)
+
+      // 保存创作者数据
+      const sourceUid = result.creators?.[0]?.user_id || creatorUid || ''
+      const sourceName = result.creators?.[0]?.nickname || ''
+      if (result.creators && result.creators.length > 0) {
+        for (const creator of result.creators) {
+          const uid = creator.user_id || creator.uid || ''
+          const creatorName = creator.nickname || creator.name || ''
+          const creatorAvatar = creator.avatar || creator.face || creator.avatar_url || ''
+          const totalFans = parseInt(creator.total_fans) || 0
+          await db.saveCreator(uid, creatorName, creatorAvatar, totalFans, accountId)
+        }
+        await db.saveCrawlCreatorsBatch(taskId, platform, result.creators)
+      }
+
+      // 保存内容数据
+      if (result.contents && result.contents.length > 0) {
+        await db.saveCrawlContentBatch(taskId, platform, result.contents, sourceUid, sourceName)
+      }
+
       return {
         success: true,
         platform,
+        taskId,
         totalCount: result.stats?.total_contents || 0,
         creators: (result.creators || []).map(c => ({
           nickname: c.nickname,

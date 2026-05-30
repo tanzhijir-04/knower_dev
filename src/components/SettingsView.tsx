@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { usePlatform } from '../contexts/PlatformContext'
-import { Eye, EyeSlash, Check, ArrowClockwise, Trash, Export, Link, Spinner, Download } from '@phosphor-icons/react'
+import { useAccount } from '../contexts/AccountContext'
+import { Eye, EyeSlash, Check, ArrowClockwise, Trash, Export, Link, Spinner, Download, Plus, PencilSimple, CaretDown, CaretUp } from '@phosphor-icons/react'
 
 interface Settings {
   apiProvider: string
@@ -38,6 +39,205 @@ const LOGIN_PLATFORMS = ['bili', 'dy', 'xhs', 'wb']
 const LOGIN_LABELS = ['B站', '抖音', '小红书', '微博']
 
 const inputCls = 'w-full bg-surface border border-hairline rounded-lg px-3 py-2.5 text-sm text-ink outline-none focus:border-primary/50 transition-colors'
+
+const PLATFORM_LABELS: Record<string, string> = {
+  bili: 'B站',
+  dy: '抖音',
+  xhs: '小红书',
+  wb: '微博',
+}
+
+const PLATFORM_COLORS: Record<string, string> = {
+  bili: 'bg-[#00a1d6]',
+  dy: 'bg-[#fe2c55]',
+  xhs: 'bg-[#ff2442]',
+  wb: 'bg-[#ff8200]',
+}
+
+function CreatorManagement() {
+  const { accounts, activeAccount, createAccount, updateAccount, deleteAccount, switchAccount } = useAccount()
+  const [showForm, setShowForm] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [formData, setFormData] = useState({
+    name: '',
+    platform: 'bili',
+    uid: '',
+    description: '',
+  })
+
+  const resetForm = () => {
+    setFormData({ name: '', platform: 'bili', uid: '', description: '' })
+    setShowForm(false)
+    setEditingId(null)
+  }
+
+  const handleSubmit = async () => {
+    if (!formData.name.trim()) return
+
+    if (editingId) {
+      await updateAccount(editingId, formData)
+    } else {
+      const id = await createAccount(formData)
+      // If this is the first account, it's auto-activated
+    }
+
+    resetForm()
+  }
+
+  const handleEdit = (account: typeof accounts[0]) => {
+    setFormData({
+      name: account.name,
+      platform: account.platform,
+      uid: account.uid || '',
+      description: account.description || '',
+    })
+    setEditingId(account.id)
+    setShowForm(true)
+  }
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('确定删除此创作者？相关数据将一并删除，此操作不可恢复。')) return
+    await deleteAccount(id)
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Add button */}
+      {!showForm && (
+        <button
+          onClick={() => setShowForm(true)}
+          className="w-full flex items-center justify-center gap-2 px-3 py-2 border border-dashed border-hairline rounded-lg text-xs text-muted hover:text-ink hover:border-hairline-strong transition-colors"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          添加创作者
+        </button>
+      )}
+
+      {/* Add/Edit form */}
+      {showForm && (
+        <div className="border border-hairline rounded-lg p-3 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-ink">
+              {editingId ? '编辑创作者' : '添加创作者'}
+            </span>
+            <button
+              onClick={resetForm}
+              className="text-xs text-muted hover:text-ink transition-colors"
+            >
+              取消
+            </button>
+          </div>
+
+          <div>
+            <label className="block text-[11px] text-muted mb-1">名称</label>
+            <input
+              value={formData.name}
+              onChange={e => setFormData(f => ({ ...f, name: e.target.value }))}
+              placeholder="如：科技老王"
+              className={inputCls}
+            />
+          </div>
+
+          <div>
+            <label className="block text-[11px] text-muted mb-1">平台</label>
+            <select
+              value={formData.platform}
+              onChange={e => setFormData(f => ({ ...f, platform: e.target.value }))}
+              className={inputCls + ' appearance-none cursor-pointer'}
+            >
+              {Object.entries(PLATFORM_LABELS).map(([key, label]) => (
+                <option key={key} value={key}>{label}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-[11px] text-muted mb-1">
+              UID <span className="text-muted-soft">(可选)</span>
+            </label>
+            <input
+              value={formData.uid}
+              onChange={e => setFormData(f => ({ ...f, uid: e.target.value }))}
+              placeholder="平台用户ID"
+              className={inputCls}
+            />
+          </div>
+
+          <div>
+            <label className="block text-[11px] text-muted mb-1">
+              备注 <span className="text-muted-soft">(可选)</span>
+            </label>
+            <input
+              value={formData.description}
+              onChange={e => setFormData(f => ({ ...f, description: e.target.value }))}
+              placeholder="创作者备注信息"
+              className={inputCls}
+            />
+          </div>
+
+          <button
+            onClick={handleSubmit}
+            disabled={!formData.name.trim()}
+            className="btn-primary w-full text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {editingId ? '保存修改' : '添加创作者'}
+          </button>
+        </div>
+      )}
+
+      {/* Account list */}
+      {accounts.length === 0 && !showForm && (
+        <p className="text-[11px] text-muted text-center py-4">
+          暂无创作者账号，点击上方按钮添加
+        </p>
+      )}
+
+      {accounts.map(account => (
+        <div
+          key={account.id}
+          className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+            account.isActive ? 'bg-primary/10 border border-primary/20' : 'hover:bg-canvas'
+          }`}
+        >
+          <span className={`w-2.5 h-2.5 rounded-full ${PLATFORM_COLORS[account.platform] || 'bg-muted'}`} />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-ink truncate">{account.name}</span>
+              {account.isActive && (
+                <span className="text-[10px] text-primary bg-primary/10 px-1.5 py-0.5 rounded">当前</span>
+              )}
+            </div>
+            <span className="text-[11px] text-muted">{PLATFORM_LABELS[account.platform] || account.platform}</span>
+          </div>
+          <div className="flex items-center gap-1">
+            {!account.isActive && (
+              <button
+                onClick={() => switchAccount(account.id)}
+                className="text-[11px] text-muted hover:text-primary transition-colors px-1.5 py-0.5"
+              >
+                切换
+              </button>
+            )}
+            <button
+              onClick={() => handleEdit(account)}
+              className="p-1 text-muted hover:text-ink transition-colors"
+              title="编辑"
+            >
+              <PencilSimple className="w-3 h-3" />
+            </button>
+            <button
+              onClick={() => handleDelete(account.id)}
+              className="p-1 text-muted hover:text-semantic-error transition-colors"
+              title="删除"
+            >
+              <Trash className="w-3 h-3" />
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
 
 export default function SettingsView() {
   const [settings, setSettings] = useState<Settings>({
@@ -473,7 +673,17 @@ export default function SettingsView() {
         </section>
 
         {/* ============================================================ */}
-        {/*  5. 关于                                                      */}
+        {/*  5. 创作者管理                                                */}
+        {/* ============================================================ */}
+        <section>
+          <h2 className="text-xs uppercase tracking-wider text-muted mb-4">创作者管理</h2>
+          <div className="card-sm space-y-4">
+            <CreatorManagement />
+          </div>
+        </section>
+
+        {/* ============================================================ */}
+        {/*  6. 关于                                                      */}
         {/* ============================================================ */}
         <section>
           <h2 className="text-xs uppercase tracking-wider text-muted mb-4">关于</h2>

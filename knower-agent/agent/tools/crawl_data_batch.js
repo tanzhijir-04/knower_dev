@@ -1,4 +1,5 @@
 const { runCrawler } = require('../../lib/crawler')
+const db = require('../../db')
 
 module.exports = {
   name: 'crawl_data_batch',
@@ -29,7 +30,7 @@ module.exports = {
     },
     required: ['platforms'],
   },
-  async execute({ platforms, keyword, creatorUid, maxNotes }) {
+  async execute({ platforms, keyword, creatorUid, maxNotes, accountId, onProgress }) {
     const tasks = platforms.map(platform => {
       const options = { maxNotes: maxNotes || 10 }
       if (creatorUid) {
@@ -38,13 +39,41 @@ module.exports = {
       } else if (keyword) {
         options.crawlerType = 'search'
       }
-      return runCrawler(platform, keyword || '', options).then(
+      const platformProgress = onProgress ? (msg) => onProgress(`[${platform}] ${msg}`) : undefined
+      return runCrawler(platform, keyword || '', options, platformProgress).then(
         result => ({ platform, success: true, data: result }),
         error => ({ platform, success: false, error: error.message })
       )
     })
 
     const results = await Promise.allSettled(tasks)
+
+    // 保存爬取结果到数据库
+    for (const result of results) {
+      if (result.status === 'fulfilled' && result.value.success) {
+        const { platform, data } = result.value
+        const taskId = await db.saveCrawlTask(platform, keyword || creatorUid || '', 'agent_crawl_batch', 'completed', '', accountId)
+
+        // 保存创作者数据
+        const sourceUid = data.creators?.[0]?.user_id || creatorUid || ''
+        const sourceName = data.creators?.[0]?.nickname || ''
+        if (data.creators && data.creators.length > 0) {
+          for (const creator of data.creators) {
+            const uid = creator.user_id || creator.uid || ''
+            const creatorName = creator.nickname || creator.name || ''
+            const creatorAvatar = creator.avatar || creator.face || creator.avatar_url || ''
+            const totalFans = parseInt(creator.total_fans) || 0
+            await db.saveCreator(uid, creatorName, creatorAvatar, totalFans, accountId)
+          }
+          await db.saveCrawlCreatorsBatch(taskId, platform, data.creators)
+        }
+
+        // 保存内容数据
+        if (data.contents && data.contents.length > 0) {
+          await db.saveCrawlContentBatch(taskId, platform, data.contents, sourceUid, sourceName)
+        }
+      }
+    }
 
     return {
       success: true,

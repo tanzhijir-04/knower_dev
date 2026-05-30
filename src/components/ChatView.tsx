@@ -6,6 +6,7 @@ import type { Message, Conversation } from '../types/electron'
 import type { Page } from '../App'
 import { useToast } from '../contexts/ToastContext'
 import { usePlatform } from '../contexts/PlatformContext'
+import { useAccount } from '../contexts/AccountContext'
 import { animateMessage, modalEnter, modalExit, menuEnter, timelinePillEnter, gsap } from '../lib/gsap'
 import { Info, FileText, X, StopCircle, ArrowUp, ArrowDown, Plus, UploadSimple, Lightning, ListChecks, Exam, Sparkle, Lightbulb, PencilSimple, ThumbsUp, ThumbsDown, Check, Copy, Export, ArrowsClockwise, StackSimple, MagicWand, ChartBar, Download, GearSix, MagnifyingGlass, Paperclip } from '@phosphor-icons/react'
 import type { ComponentType } from 'react'
@@ -180,16 +181,38 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
   const animatedMsgIdsRef = useRef(new Set<string>())
   const { showToast } = useToast()
   const { isWindows } = usePlatform()
+  const { activeAccountId, activeAccount } = useAccount()
   const [defaultPlatforms, setDefaultPlatforms] = useState<string[]>(['bilibili', 'douyin', 'xiaohongshu'])
 
-  // Load default platforms from settings
+  // Load default platforms: prioritize active account's platform, fallback to settings
   useEffect(() => {
+    if (activeAccount?.platform) {
+      const platformMap: Record<string, string> = { bili: 'bilibili', dy: 'douyin', xhs: 'xiaohongshu', wb: 'weibo' }
+      const mapped = platformMap[activeAccount.platform]
+      if (mapped) {
+        setDefaultPlatforms([mapped])
+        return
+      }
+    }
     window.electronAPI?.getStoreAll().then((all) => {
       if (all?.defaultPlatforms && Array.isArray(all.defaultPlatforms)) {
         setDefaultPlatforms(all.defaultPlatforms as string[])
       }
     })
-  }, [])
+  }, [activeAccount?.platform])
+
+  // Reset chat state when account switches
+  useEffect(() => {
+    setMessages([])
+    setConversationId(null)
+    setInput('')
+    setIsStreaming(false)
+    setStatus('')
+    setCanvasOpen(false)
+    setCanvasData(null)
+    setAgentFormRequest(null)
+    animatedMsgIdsRef.current.clear()
+  }, [activeAccountId])
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -306,6 +329,8 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
             return prev
           })
           setStatus('')
+        } else if (event.type === 'tool_progress') {
+          setStatus(event.message || '')
         } else if (event.type === 'form_request') {
           setAgentFormRequest({
             message: event.message,

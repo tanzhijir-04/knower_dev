@@ -32,10 +32,11 @@ module.exports = {
       },
     },
   },
-  async execute({ platform, sourceUid, limit }) {
+  async execute({ platform, sourceUid, limit, accountId }) {
     try {
+      const aid = accountId || 'default'
       if (sourceUid) {
-        const videos = await getVideosBySource(platform || 'bili', sourceUid)
+        const videos = await getVideosBySource(platform || 'bili', sourceUid, aid)
         return {
           success: true,
           sourceUid,
@@ -49,7 +50,7 @@ module.exports = {
           })),
         }
       } else {
-        const sources = await getSourceList(platform === 'all' ? null : platform)
+        const sources = await getSourceList(platform === 'all' ? null : platform, aid)
         return {
           success: true,
           sources: sources.map(s => ({

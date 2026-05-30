@@ -1,3 +1,24 @@
+export interface Account {
+  id: string
+  name: string
+  platform: string
+  uid: string
+  avatarUrl: string
+  description: string
+  isActive: boolean
+  userId: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface AccountData {
+  name: string
+  platform: string
+  uid?: string
+  avatarUrl?: string
+  description?: string
+}
+
 export interface Conversation {
   id: number
   title: string
@@ -183,6 +204,13 @@ export interface ElectronAPI {
   minimizeWindow: () => Promise<void>
   maximizeWindow: () => Promise<void>
   closeWindow: () => Promise<void>
+  // 账号管理
+  listAccounts: () => Promise<Account[]>
+  getActiveAccount: () => Promise<Account | null>
+  createAccount: (data: AccountData) => Promise<string>
+  switchAccount: (id: string) => Promise<boolean>
+  updateAccount: (id: string, updates: Partial<AccountData>) => Promise<boolean>
+  deleteAccount: (id: string) => Promise<boolean>
   // 设置
   getStore: (key: string) => Promise<unknown>
   getStoreAll: () => Promise<Record<string, unknown>>

@@ -2,7 +2,7 @@ const initSqlJs = require('sql.js')
 const fs = require('fs')
 const path = require('path')
 
-const DB_PATH = path.join(__dirname, '..', 'knower.db')
+const DB_PATH = process.env.KNOWER_DB_PATH || path.join(__dirname, '..', 'knower.db')
 
 let db
 let _dirty = false
@@ -53,6 +53,24 @@ process.on('SIGINT', () => { flushDb(); process.exit() })
 process.on('SIGTERM', () => { flushDb(); process.exit() })
 
 function initTables() {
+  // ============================================================
+  //  Accounts 表 — 多创作者账号管理
+  // ============================================================
+  db.run(`
+    CREATE TABLE IF NOT EXISTS accounts (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      platform TEXT NOT NULL,
+      uid TEXT DEFAULT '',
+      avatar_url TEXT DEFAULT '',
+      description TEXT DEFAULT '',
+      is_active INTEGER DEFAULT 0,
+      user_id TEXT NOT NULL DEFAULT 'default',
+      created_at DATETIME DEFAULT (datetime('now','localtime')),
+      updated_at DATETIME DEFAULT (datetime('now','localtime'))
+    )
+  `)
+
   db.run(`
     CREATE TABLE IF NOT EXISTS scripts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -62,6 +80,14 @@ function initTables() {
       created_at DATETIME DEFAULT (datetime('now','localtime'))
     )
   `)
+  // 迁移: scripts 表加 account_id
+  try {
+    db.exec('SELECT account_id FROM scripts LIMIT 1')
+  } catch {
+    db.exec("ALTER TABLE scripts ADD COLUMN account_id TEXT NOT NULL DEFAULT 'default'")
+    saveDb()
+  }
+
   db.run(`
     CREATE TABLE IF NOT EXISTS conversations (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -71,6 +97,13 @@ function initTables() {
       updated_at DATETIME DEFAULT (datetime('now','localtime'))
     )
   `)
+  // 迁移: conversations 表加 account_id
+  try {
+    db.exec('SELECT account_id FROM conversations LIMIT 1')
+  } catch {
+    db.exec("ALTER TABLE conversations ADD COLUMN account_id TEXT NOT NULL DEFAULT 'default'")
+    saveDb()
+  }
   // 迁移：如果旧表没有 is_pinned 列，添加
   try {
     db.exec('SELECT is_pinned FROM conversations LIMIT 1')
@@ -113,6 +146,14 @@ function initTables() {
       completed_at DATETIME
     )
   `)
+  // 迁移: crawl_tasks 表加 account_id
+  try {
+    db.exec('SELECT account_id FROM crawl_tasks LIMIT 1')
+  } catch {
+    db.exec("ALTER TABLE crawl_tasks ADD COLUMN account_id TEXT NOT NULL DEFAULT 'default'")
+    saveDb()
+  }
+
   db.run(`
     CREATE TABLE IF NOT EXISTS crawl_content (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -231,6 +272,14 @@ function initTables() {
     db.exec('ALTER TABLE creators ADD COLUMN total_fans INTEGER DEFAULT 0')
     saveDb()
   }
+  // 迁移: creators 表加 account_id
+  try {
+    db.exec('SELECT account_id FROM creators LIMIT 1')
+  } catch {
+    db.exec("ALTER TABLE creators ADD COLUMN account_id TEXT NOT NULL DEFAULT 'default'")
+    saveDb()
+  }
+
   db.run(`
     CREATE TABLE IF NOT EXISTS saved_topics (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -244,6 +293,14 @@ function initTables() {
       created_at DATETIME DEFAULT (datetime('now','localtime'))
     )
   `)
+  // 迁移: saved_topics 表加 account_id
+  try {
+    db.exec('SELECT account_id FROM saved_topics LIMIT 1')
+  } catch {
+    db.exec("ALTER TABLE saved_topics ADD COLUMN account_id TEXT NOT NULL DEFAULT 'default'")
+    saveDb()
+  }
+
   db.run(`
     CREATE TABLE IF NOT EXISTS video_analyses (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -256,6 +313,13 @@ function initTables() {
       UNIQUE(platform, source_uid)
     )
   `)
+  // 迁移: video_analyses 表加 account_id
+  try {
+    db.exec('SELECT account_id FROM video_analyses LIMIT 1')
+  } catch {
+    db.exec("ALTER TABLE video_analyses ADD COLUMN account_id TEXT NOT NULL DEFAULT 'default'")
+    saveDb()
+  }
   // 修复分类脏数据：将 datetime 格式的 category 值重置为"未分类"
   db.run("UPDATE crawl_content SET category = '未分类' WHERE category LIKE '____-__-__%'")
 
@@ -299,14 +363,14 @@ function initTables() {
   } catch { /* ignore */ }
 }
 
-async function saveScript(content, analysis, result) {
+async function saveScript(content, analysis, result, accountId = 'default') {
   const db = await getDb()
   // 先查当前最大 id
   const maxRes = db.exec('SELECT COALESCE(MAX(id), 0) FROM scripts')
   const nextId = (maxRes[0]?.values[0][0] || 0) + 1
   db.run(
-    'INSERT INTO scripts (id, content, analysis, result) VALUES (?, ?, ?, ?)',
-    [nextId, content, JSON.stringify(analysis), JSON.stringify(result)]
+    'INSERT INTO scripts (id, content, analysis, result, account_id) VALUES (?, ?, ?, ?, ?)',
+    [nextId, content, JSON.stringify(analysis), JSON.stringify(result), accountId]
   )
   saveDb()
   return nextId
@@ -325,11 +389,11 @@ async function getScript(id) {
   return row
 }
 
-async function listScripts(limit = 20) {
+async function listScripts(limit = 20, accountId = 'default') {
   const db = await getDb()
+  const safeAccountId = String(accountId).replace(/'/g, "''")
   const res = db.exec(
-    'SELECT id, created_at FROM scripts ORDER BY id DESC LIMIT ?',
-    [limit]
+    `SELECT id, created_at FROM scripts WHERE account_id = '${safeAccountId}' ORDER BY id DESC LIMIT ${limit}`
   )
   if (!res.length) return []
   return res[0].values.map((row) => ({
@@ -340,11 +404,11 @@ async function listScripts(limit = 20) {
 
 // --- 会话管理 ---
 
-async function createConversation(title) {
+async function createConversation(title, accountId = 'default') {
   const db = await getDb()
   const maxRes = db.exec('SELECT COALESCE(MAX(id), 0) FROM conversations')
   const nextId = (maxRes[0]?.values[0][0] || 0) + 1
-  db.run('INSERT INTO conversations (id, title) VALUES (?, ?)', [nextId, title || '新对话'])
+  db.run('INSERT INTO conversations (id, title, account_id) VALUES (?, ?, ?)', [nextId, title || '新对话', accountId])
   saveDb()
   return nextId
 }
@@ -379,11 +443,11 @@ async function deleteMessage(id) {
 }
 
 
-async function listConversations(limit = 50) {
+async function listConversations(limit = 50, accountId = 'default') {
   const db = await getDb()
   const res = db.exec(
-    'SELECT id, title, is_pinned, created_at, updated_at FROM conversations ORDER BY is_pinned DESC, updated_at DESC LIMIT ?',
-    [limit]
+    'SELECT id, title, is_pinned, created_at, updated_at FROM conversations WHERE account_id = ? ORDER BY is_pinned DESC, updated_at DESC LIMIT ?',
+    [accountId, limit]
   )
   if (!res.length) return []
   return res[0].values.map((row) => ({
@@ -464,13 +528,13 @@ async function getMemories(accountId) {
 
 // --- 爬虫任务管理 ---
 
-async function saveCrawlTask(platform, keywords, crawlerType, status, resultJson) {
+async function saveCrawlTask(platform, keywords, crawlerType, status, resultJson, accountId = 'default') {
   const db = await getDb()
   const maxRes = db.exec('SELECT COALESCE(MAX(id), 0) FROM crawl_tasks')
   const nextId = (maxRes[0]?.values[0][0] || 0) + 1
   db.run(
-    'INSERT INTO crawl_tasks (id, platform, keywords, crawler_type, status, result_json) VALUES (?, ?, ?, ?, ?, ?)',
-    [nextId, platform, keywords, crawlerType || 'search', status || 'pending', resultJson || null]
+    'INSERT INTO crawl_tasks (id, platform, keywords, crawler_type, status, result_json, account_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    [nextId, platform, keywords, crawlerType || 'search', status || 'pending', resultJson || null, accountId]
   )
   saveDb()
   return nextId
@@ -525,11 +589,11 @@ async function saveCrawlContentBatch(taskId, platform, contents, sourceUid, sour
   saveDb()
 }
 
-async function getCrawlTasks(limit = 50) {
+async function getCrawlTasks(limit = 50, accountId = 'default') {
   const db = await getDb()
   const res = db.exec(
-    'SELECT id, platform, keywords, crawler_type, status, created_at, completed_at FROM crawl_tasks ORDER BY id DESC LIMIT ?',
-    [limit]
+    'SELECT id, platform, keywords, crawler_type, status, created_at, completed_at FROM crawl_tasks WHERE account_id = ? ORDER BY id DESC LIMIT ?',
+    [accountId, limit]
   )
   if (!res.length) return []
   return res[0].values.map((row) => ({
@@ -648,22 +712,23 @@ async function cleanOldData() {
 
 // --- 创作者管理 ---
 
-async function saveCreator(uid, name, avatarUrl, totalFans) {
+async function saveCreator(uid, name, avatarUrl, totalFans, accountId = 'default') {
   const db = await getDb()
   db.run(
-    `INSERT INTO creators (uid, name, avatar_url, total_fans, last_fetched_at)
-     VALUES (?, ?, ?, ?, datetime('now','localtime'))
-     ON CONFLICT(uid) DO UPDATE SET name = ?, avatar_url = ?, total_fans = ?, last_fetched_at = datetime('now','localtime')`,
-    [uid, name, avatarUrl || '', totalFans || 0, name, avatarUrl || '', totalFans || 0]
+    `INSERT INTO creators (uid, name, avatar_url, total_fans, account_id, last_fetched_at)
+     VALUES (?, ?, ?, ?, ?, datetime('now','localtime'))
+     ON CONFLICT(uid) DO UPDATE SET name = ?, avatar_url = ?, total_fans = ?, account_id = ?, last_fetched_at = datetime('now','localtime')`,
+    [uid, name, avatarUrl || '', totalFans || 0, accountId, name, avatarUrl || '', totalFans || 0, accountId]
   )
   saveDb()
 }
 
-async function getCreators() {
+async function getCreators(accountId = 'default') {
   const db = await getDb()
   const res = db.exec(
     `SELECT uid, name, avatar_url, is_starred, is_pinned, total_fans, last_fetched_at
-     FROM creators ORDER BY is_pinned DESC, is_starred DESC, last_fetched_at DESC`
+     FROM creators WHERE account_id = ? ORDER BY is_pinned DESC, is_starred DESC, last_fetched_at DESC`,
+    [accountId]
   )
   if (!res.length) return []
   return res[0].values.map((row) => ({
@@ -677,43 +742,44 @@ async function getCreators() {
   }))
 }
 
-async function starCreator(uid) {
+async function starCreator(uid, accountId = 'default') {
   const db = await getDb()
   db.run(
-    `UPDATE creators SET is_starred = CASE WHEN is_starred = 1 THEN 0 ELSE 1 END WHERE uid = ?`,
-    [uid]
+    `UPDATE creators SET is_starred = CASE WHEN is_starred = 1 THEN 0 ELSE 1 END WHERE uid = ? AND account_id = ?`,
+    [uid, accountId]
   )
   saveDb()
 }
 
-async function pinCreator(uid) {
+async function pinCreator(uid, accountId = 'default') {
   const db = await getDb()
   db.run(
-    `UPDATE creators SET is_pinned = CASE WHEN is_pinned = 1 THEN 0 ELSE 1 END WHERE uid = ?`,
-    [uid]
+    `UPDATE creators SET is_pinned = CASE WHEN is_pinned = 1 THEN 0 ELSE 1 END WHERE uid = ? AND account_id = ?`,
+    [uid, accountId]
   )
   saveDb()
 }
 
-async function deleteCreator(uid) {
+async function deleteCreator(uid, accountId = 'default') {
   const db = await getDb()
-  db.run('DELETE FROM creators WHERE uid = ?', [uid])
-  db.run('DELETE FROM crawl_content WHERE source_uid = ?', [uid])
+  db.run('DELETE FROM creators WHERE uid = ? AND account_id = ?', [uid, accountId])
   saveDb()
 }
 
-async function getAllCrawlContent(platform) {
+async function getAllCrawlContent(platform, accountId = 'default') {
   const db = await getDb()
-  let query = `SELECT id, platform, content_type, content_id, title, "desc",
-            author_name, author_id, like_count, comment_count, share_count,
-            play_count, created_at, raw_json, category, source_uid, source_name
-     FROM crawl_content`
-  const params = []
+  let query = `SELECT cc.id, cc.platform, cc.content_type, cc.content_id, cc.title, cc."desc",
+            cc.author_name, cc.author_id, cc.like_count, cc.comment_count, cc.share_count,
+            cc.play_count, cc.created_at, cc.raw_json, cc.category, cc.source_uid, cc.source_name
+     FROM crawl_content cc
+     INNER JOIN crawl_tasks ct ON cc.task_id = ct.id
+     WHERE ct.account_id = ?`
+  const params = [accountId]
   if (platform) {
-    query += ' WHERE platform = ?'
+    query += ' AND cc.platform = ?'
     params.push(platform)
   }
-  query += ' ORDER BY play_count DESC'
+  query += ' ORDER BY cc.play_count DESC'
   const res = db.exec(query, params)
   if (!res.length) return []
   return res[0].values.map((row) => {
@@ -745,15 +811,18 @@ async function getAllCrawlContent(platform) {
 
 // --- 来源管理 ---
 
-async function getSourceList(platform) {
+async function getSourceList(platform, accountId = 'default') {
   const db = await getDb()
-  let query = 'SELECT source_uid, source_name, COUNT(*) as cnt FROM crawl_content'
-  const params = []
+  let query = `SELECT cc.source_uid, cc.source_name, COUNT(*) as cnt
+     FROM crawl_content cc
+     INNER JOIN crawl_tasks ct ON cc.task_id = ct.id
+     WHERE ct.account_id = ?`
+  const params = [accountId]
   if (platform) {
-    query += ' WHERE platform = ?'
+    query += ' AND cc.platform = ?'
     params.push(platform)
   }
-  query += ' GROUP BY source_uid ORDER BY cnt DESC'
+  query += ' GROUP BY cc.source_uid ORDER BY cnt DESC'
   const res = db.exec(query, params)
   // 获取创作者信息（含收藏/置顶状态）
   const creatorsRes = db.exec('SELECT uid, name, avatar_url, is_starred, is_pinned, total_fans FROM creators')
@@ -808,22 +877,24 @@ async function getSourceList(platform) {
   })
 }
 
-async function getVideosBySource(platform, sourceUid) {
+async function getVideosBySource(platform, sourceUid, accountId = 'default') {
   const db = await getDb()
-  let query = `SELECT id, platform, content_type, content_id, title, "desc",
-            author_name, author_id, like_count, comment_count, share_count,
-            play_count, created_at, raw_json, category, source_uid, source_name
-     FROM crawl_content WHERE 1=1`
-  const params = []
+  let query = `SELECT cc.id, cc.platform, cc.content_type, cc.content_id, cc.title, cc."desc",
+            cc.author_name, cc.author_id, cc.like_count, cc.comment_count, cc.share_count,
+            cc.play_count, cc.created_at, cc.raw_json, cc.category, cc.source_uid, cc.source_name
+     FROM crawl_content cc
+     INNER JOIN crawl_tasks ct ON cc.task_id = ct.id
+     WHERE ct.account_id = ?`
+  const params = [accountId]
   if (platform) {
-    query += ` AND platform = ?`
+    query += ` AND cc.platform = ?`
     params.push(platform)
   }
   if (sourceUid) {
-    query += ` AND source_uid = ?`
+    query += ` AND cc.source_uid = ?`
     params.push(sourceUid)
   }
-  query += ` ORDER BY play_count DESC`
+  query += ` ORDER BY cc.play_count DESC`
 
   const res = db.exec(query, params)
   if (!res.length) return []
@@ -876,15 +947,18 @@ async function categorizeVideoBatch(updates) {
   saveDb()
 }
 
-async function getAllCategories(platform) {
+async function getAllCategories(platform, accountId = 'default') {
   const db = await getDb()
-  let query = 'SELECT category, COUNT(*) as cnt FROM crawl_content'
-  const params = []
+  let query = `SELECT cc.category, COUNT(*) as cnt
+     FROM crawl_content cc
+     INNER JOIN crawl_tasks ct ON cc.task_id = ct.id
+     WHERE ct.account_id = ?`
+  const params = [accountId]
   if (platform) {
-    query += ' WHERE platform = ?'
+    query += ' AND cc.platform = ?'
     params.push(platform)
   }
-  query += ' GROUP BY category ORDER BY cnt DESC'
+  query += ' GROUP BY cc.category ORDER BY cnt DESC'
   const res = db.exec(query, params)
   if (!res.length) return []
   // 合并时间戳格式的分类到"未分类"，再重新统计
@@ -899,12 +973,15 @@ async function getAllCategories(platform) {
     .map(([category, count]) => ({ category, count }))
 }
 
-async function getUncategorizedCount(platform) {
+async function getUncategorizedCount(platform, accountId = 'default') {
   const db = await getDb()
-  let query = "SELECT COUNT(*) FROM crawl_content WHERE category = '未分类'"
-  const params = []
+  let query = `SELECT COUNT(*)
+     FROM crawl_content cc
+     INNER JOIN crawl_tasks ct ON cc.task_id = ct.id
+     WHERE ct.account_id = ? AND cc.category = '未分类'`
+  const params = [accountId]
   if (platform) {
-    query += ' AND platform = ?'
+    query += ' AND cc.platform = ?'
     params.push(platform)
   }
   const res = db.exec(query, params)
@@ -913,21 +990,21 @@ async function getUncategorizedCount(platform) {
 
 // --- 灵感库 ---
 
-async function saveTopic(platform, title, reason, source, estimatedPerformance, tags, fullData) {
+async function saveTopic(platform, title, reason, source, estimatedPerformance, tags, fullData, accountId = 'default') {
   const db = await getDb()
   db.run(
-    'INSERT INTO saved_topics (platform, title, reason, source, estimated_performance, tags, full_data) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    [platform, title, reason || '', source || '', estimatedPerformance || '', JSON.stringify(tags || []), JSON.stringify(fullData || {})]
+    'INSERT INTO saved_topics (platform, title, reason, source, estimated_performance, tags, full_data, account_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    [platform, title, reason || '', source || '', estimatedPerformance || '', JSON.stringify(tags || []), JSON.stringify(fullData || {}), accountId]
   )
   saveDb()
 }
 
-async function getSavedTopics(platform) {
+async function getSavedTopics(platform, accountId = 'default') {
   const db = await getDb()
-  let query = 'SELECT id, platform, title, reason, source, estimated_performance, tags, full_data, created_at FROM saved_topics'
-  const params = []
+  let query = 'SELECT id, platform, title, reason, source, estimated_performance, tags, full_data, created_at FROM saved_topics WHERE account_id = ?'
+  const params = [accountId]
   if (platform) {
-    query += ' WHERE platform = ?'
+    query += ' AND platform = ?'
     params.push(platform)
   }
   query += ' ORDER BY id DESC'
@@ -952,13 +1029,15 @@ async function deleteSavedTopic(id) {
   saveDb()
 }
 
-async function getTopContent(platform, limit = 20) {
+async function getTopContent(platform, limit = 20, accountId = 'default') {
   const db = await getDb()
-  const params = [platform || 'bili']
+  const params = [accountId, platform || 'bili']
   const res = db.exec(
-    `SELECT title, "desc", author_name, play_count, like_count, comment_count, share_count, category, created_at
-     FROM crawl_content WHERE platform = ?
-     ORDER BY (like_count + comment_count + share_count) * 1.0 / MAX(play_count, 1) DESC
+    `SELECT cc.title, cc."desc", cc.author_name, cc.play_count, cc.like_count, cc.comment_count, cc.share_count, cc.category, cc.created_at
+     FROM crawl_content cc
+     INNER JOIN crawl_tasks ct ON cc.task_id = ct.id
+     WHERE ct.account_id = ? AND cc.platform = ?
+     ORDER BY (cc.like_count + cc.comment_count + cc.share_count) * 1.0 / MAX(cc.play_count, 1) DESC
      LIMIT ?`,
     [...params, limit]
   )
@@ -976,15 +1055,17 @@ async function getTopContent(platform, limit = 20) {
   }))
 }
 
-async function getRecentTrends(platform, days = 7) {
+async function getRecentTrends(platform, days = 7, accountId = 'default') {
   const db = await getDb()
   const dateThreshold = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10)
   const res = db.exec(
-    `SELECT title, "desc", author_name, play_count, like_count, comment_count, created_at
-     FROM crawl_content WHERE platform = ? AND created_at >= ?
-     ORDER BY play_count DESC
+    `SELECT cc.title, cc."desc", cc.author_name, cc.play_count, cc.like_count, cc.comment_count, cc.created_at
+     FROM crawl_content cc
+     INNER JOIN crawl_tasks ct ON cc.task_id = ct.id
+     WHERE ct.account_id = ? AND cc.platform = ? AND cc.created_at >= ?
+     ORDER BY cc.play_count DESC
      LIMIT 30`,
-    [platform || 'bili', dateThreshold]
+    [accountId, platform || 'bili', dateThreshold]
   )
   if (!res.length) return []
   return res[0].values.map((row) => ({
@@ -1000,21 +1081,21 @@ async function getRecentTrends(platform, days = 7) {
 
 // --- AI 分析缓存 ---
 
-async function saveVideoAnalysis(platform, sourceUid, analysis, videoCount, overview) {
+async function saveVideoAnalysis(platform, sourceUid, analysis, videoCount, overview, accountId = 'default') {
   const db = await getDb()
   db.run(
-    `INSERT OR REPLACE INTO video_analyses (platform, source_uid, analysis_json, video_count, overview_json)
-     VALUES (?, ?, ?, ?, ?)`,
-    [platform, sourceUid || '', JSON.stringify(analysis), videoCount, overview ? JSON.stringify(overview) : null]
+    `INSERT OR REPLACE INTO video_analyses (platform, source_uid, analysis_json, video_count, overview_json, account_id)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [platform, sourceUid || '', JSON.stringify(analysis), videoCount, overview ? JSON.stringify(overview) : null, accountId]
   )
   saveDb()
 }
 
-async function getVideoAnalysis(platform, sourceUid) {
+async function getVideoAnalysis(platform, sourceUid, accountId = 'default') {
   const db = await getDb()
   const res = db.exec(
-    'SELECT analysis_json, video_count, overview_json, created_at FROM video_analyses WHERE platform = ? AND source_uid = ?',
-    [platform, sourceUid || '']
+    'SELECT analysis_json, video_count, overview_json, created_at FROM video_analyses WHERE platform = ? AND source_uid = ? AND account_id = ?',
+    [platform, sourceUid || '', accountId]
   )
   if (!res.length || !res[0].values.length) return null
   const row = res[0].values[0]
@@ -1026,25 +1107,27 @@ async function getVideoAnalysis(platform, sourceUid) {
   }
 }
 
-async function deleteVideoAnalysis(platform, sourceUid) {
+async function deleteVideoAnalysis(platform, sourceUid, accountId = 'default') {
   const db = await getDb()
-  db.run('DELETE FROM video_analyses WHERE platform = ? AND source_uid = ?', [platform, sourceUid || ''])
+  db.run('DELETE FROM video_analyses WHERE platform = ? AND source_uid = ? AND account_id = ?', [platform, sourceUid || '', accountId])
   saveDb()
 }
 
 // --- 竞品分析 ---
 
-async function getSourceDetail(sourceUid, platform) {
+async function getSourceDetail(sourceUid, platform, accountId = 'default') {
   const db = await getDb()
-  let query = `SELECT title, "desc", like_count, comment_count, play_count, share_count,
-               created_at, category, raw_json, source_name
-       FROM crawl_content WHERE source_uid = ?`
-  const params = [sourceUid]
+  let query = `SELECT cc.title, cc."desc", cc.like_count, cc.comment_count, cc.play_count, cc.share_count,
+               cc.created_at, cc.category, cc.raw_json, cc.source_name
+       FROM crawl_content cc
+       INNER JOIN crawl_tasks ct ON cc.task_id = ct.id
+       WHERE ct.account_id = ? AND cc.source_uid = ?`
+  const params = [accountId, sourceUid]
   if (platform) {
-    query += ' AND platform = ?'
+    query += ' AND cc.platform = ?'
     params.push(platform)
   }
-  query += ' ORDER BY play_count DESC LIMIT 30'
+  query += ' ORDER BY cc.play_count DESC LIMIT 30'
   const res = db.exec(query, params)
   if (!res.length) return []
   return res[0].values.map((row) => {
@@ -1067,18 +1150,20 @@ async function getSourceDetail(sourceUid, platform) {
 }
 
 // 查询关键词来源的详细数据（按 keyword 前缀匹配）
-async function getKeywordDetail(keyword, platform) {
+async function getKeywordDetail(keyword, platform, accountId = 'default') {
   const db = await getDb()
   const sourceUid = 'keyword_' + keyword
-  let query = `SELECT title, "desc", like_count, comment_count, play_count, share_count,
-               created_at, category, raw_json, author_name
-       FROM crawl_content WHERE source_uid = ?`
-  const params = [sourceUid]
+  let query = `SELECT cc.title, cc."desc", cc.like_count, cc.comment_count, cc.play_count, cc.share_count,
+               cc.created_at, cc.category, cc.raw_json, cc.author_name
+       FROM crawl_content cc
+       INNER JOIN crawl_tasks ct ON cc.task_id = ct.id
+       WHERE ct.account_id = ? AND cc.source_uid = ?`
+  const params = [accountId, sourceUid]
   if (platform) {
-    query += ' AND platform = ?'
+    query += ' AND cc.platform = ?'
     params.push(platform)
   }
-  query += ' ORDER BY play_count DESC LIMIT 30'
+  query += ' ORDER BY cc.play_count DESC LIMIT 30'
   const res = db.exec(query, params)
   if (!res.length) return []
   return res[0].values.map((row) => {
@@ -1102,13 +1187,15 @@ async function getKeywordDetail(keyword, platform) {
 
 // --- 页面数据互通 ---
 
-async function getRecentCrawlSummary() {
+async function getRecentCrawlSummary(accountId = 'default') {
   const db = await getDb()
   const res = db.exec(`
-    SELECT source_name, platform, COUNT(*) as cnt, SUM(play_count) as total_play, SUM(like_count) as total_like
-    FROM crawl_content WHERE source_uid != '' AND source_uid IS NOT NULL
-    GROUP BY source_uid, platform ORDER BY total_play DESC LIMIT 10
-  `)
+    SELECT cc.source_name, cc.platform, COUNT(*) as cnt, SUM(cc.play_count) as total_play, SUM(cc.like_count) as total_like
+    FROM crawl_content cc
+    INNER JOIN crawl_tasks ct ON cc.task_id = ct.id
+    WHERE ct.account_id = ? AND cc.source_uid != '' AND cc.source_uid IS NOT NULL
+    GROUP BY cc.source_uid, cc.platform ORDER BY total_play DESC LIMIT 10
+  `, [accountId])
   if (!res.length) return ''
   return res[0].values.map(row => {
     const platform = row[1] === 'bili' ? 'B站' : row[1] === 'dy' ? '抖音' : row[1] === 'xhs' ? '小红书' : row[1]
@@ -1120,6 +1207,93 @@ function reloadDb() {
   if (_saveTimer) { clearTimeout(_saveTimer); _saveTimer = null }
   _dirty = false
   db = null
+}
+
+// --- 账号管理 ---
+
+async function createAccount({ name, platform, uid, avatarUrl, description }) {
+  const db = await getDb()
+  const id = `${platform}_${uid || Date.now()}`
+  // 检查是否第一个账号，是则自动激活
+  const countRes = db.exec('SELECT COUNT(*) FROM accounts')
+  const count = countRes.length ? countRes[0].values[0][0] : 0
+  const isActive = count === 0 ? 1 : 0
+  db.run(
+    `INSERT OR REPLACE INTO accounts (id, name, platform, uid, avatar_url, description, is_active, user_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'default', datetime('now','localtime'), datetime('now','localtime'))`,
+    [id, name, platform, uid || '', avatarUrl || '', description || '', isActive]
+  )
+  saveDb()
+  return id
+}
+
+async function listAccounts() {
+  const db = await getDb()
+  const res = db.exec('SELECT id, name, platform, uid, avatar_url, description, is_active, user_id, created_at, updated_at FROM accounts ORDER BY is_active DESC, updated_at DESC')
+  if (!res.length) return []
+  return res[0].values.map(row => ({
+    id: row[0],
+    name: row[1],
+    platform: row[2],
+    uid: row[3],
+    avatarUrl: row[4],
+    description: row[5],
+    isActive: !!row[6],
+    userId: row[7],
+    createdAt: row[8],
+    updatedAt: row[9],
+  }))
+}
+
+async function getActiveAccount() {
+  const db = await getDb()
+  const res = db.exec("SELECT id, name, platform, uid, avatar_url, description, user_id FROM accounts WHERE is_active = 1 LIMIT 1")
+  if (!res.length || !res[0].values.length) return null
+  const row = res[0].values[0]
+  return { id: row[0], name: row[1], platform: row[2], uid: row[3], avatarUrl: row[4], description: row[5], userId: row[6] }
+}
+
+async function switchAccount(accountId) {
+  const db = await getDb()
+  db.run('UPDATE accounts SET is_active = 0')
+  db.run("UPDATE accounts SET is_active = 1, updated_at = datetime('now','localtime') WHERE id = ?", [accountId])
+  saveDb()
+}
+
+async function updateAccount(accountId, updates) {
+  const db = await getDb()
+  const fields = []
+  const values = []
+  for (const [key, value] of Object.entries(updates)) {
+    const col = key.replace(/([A-Z])/g, '_$1').toLowerCase()
+    fields.push(`${col} = ?`)
+    values.push(value)
+  }
+  if (fields.length === 0) return
+  fields.push("updated_at = datetime('now','localtime')")
+  values.push(accountId)
+  db.run(`UPDATE accounts SET ${fields.join(', ')} WHERE id = ?`, values)
+  saveDb()
+}
+
+async function deleteAccount(accountId) {
+  const db = await getDb()
+  // 级联删除关联数据
+  db.run("DELETE FROM messages WHERE conversation_id IN (SELECT id FROM conversations WHERE account_id = ?)", [accountId])
+  db.run('DELETE FROM conversations WHERE account_id = ?', [accountId])
+  db.run('DELETE FROM scripts WHERE account_id = ?', [accountId])
+  db.run("DELETE FROM crawl_content WHERE task_id IN (SELECT id FROM crawl_tasks WHERE account_id = ?)", [accountId])
+  db.run('DELETE FROM crawl_tasks WHERE account_id = ?', [accountId])
+  db.run('DELETE FROM saved_topics WHERE account_id = ?', [accountId])
+  db.run('DELETE FROM video_analyses WHERE account_id = ?', [accountId])
+  db.run('DELETE FROM memories WHERE account_id = ?', [accountId])
+  db.run('DELETE FROM accounts WHERE id = ?', [accountId])
+  // 如果删除的是当前激活账号，激活最近的账号
+  const remaining = db.exec('SELECT id FROM accounts ORDER BY updated_at DESC LIMIT 1')
+  if (remaining.length && remaining[0].values.length) {
+    db.run("UPDATE accounts SET is_active = 1 WHERE id = ?", [remaining[0].values[0][0]])
+  }
+  saveDb()
 }
 
 module.exports = {
@@ -1135,4 +1309,5 @@ module.exports = {
   saveTopic, getSavedTopics, deleteSavedTopic, getTopContent, getRecentTrends,
   saveVideoAnalysis, getVideoAnalysis, deleteVideoAnalysis, getRecentCrawlSummary,
   getSourceDetail, getKeywordDetail,
+  createAccount, listAccounts, getActiveAccount, switchAccount, updateAccount, deleteAccount,
 }

@@ -49,12 +49,13 @@ module.exports = {
     },
     required: ['script', 'analysis', 'result'],
   },
-  async execute({ script, analysis, result }) {
+  async execute({ script, analysis, result, accountId }) {
     try {
-      const id = await saveScript(script, analysis, result)
+      const aid = accountId || 'default'
+      const id = await saveScript(script, analysis, result, aid)
 
       // 异步提炼记忆，不阻塞主流程
-      extractAndSaveMemories(script, analysis, result).catch((err) => {
+      extractAndSaveMemories(script, analysis, result, aid).catch((err) => {
         console.error('[save_result] 记忆提炼失败:', err)
       })
 
@@ -66,7 +67,7 @@ module.exports = {
   },
 }
 
-async function extractAndSaveMemories(script, analysis, result) {
+async function extractAndSaveMemories(script, analysis, result, accountId = 'default') {
   const settings = loadSettings()
   if (!settings.apiKey) {
     console.error('[save_result] 无法提炼记忆：缺少 API Key')
@@ -131,7 +132,7 @@ ${dataSummary}`,
       continue
     }
     try {
-      await upsertMemory('default', mem.type, mem.key, mem.value, mem.evidence || '')
+      await upsertMemory(accountId, mem.type, mem.key, mem.value, mem.evidence || '')
     } catch (err) {
       console.error(`[save_result] 写入记忆失败 (key=${mem.key}):`, err)
     }

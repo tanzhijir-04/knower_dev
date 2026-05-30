@@ -7,6 +7,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   minimizeWindow: () => ipcRenderer.invoke('window-minimize'),
   maximizeWindow: () => ipcRenderer.invoke('window-maximize'),
   closeWindow: () => ipcRenderer.invoke('window-close'),
+  // 账号管理
+  listAccounts: () => ipcRenderer.invoke('account-list'),
+  getActiveAccount: () => ipcRenderer.invoke('account-get-active'),
+  createAccount: (data: { name: string; platform: string; uid?: string; avatarUrl?: string; description?: string }) =>
+    ipcRenderer.invoke('account-create', data),
+  switchAccount: (id: string) => ipcRenderer.invoke('account-switch', id),
+  updateAccount: (id: string, updates: Record<string, unknown>) => ipcRenderer.invoke('account-update', id, updates),
+  deleteAccount: (id: string) => ipcRenderer.invoke('account-delete', id),
   // 设置
   getStore: (key: string) => ipcRenderer.invoke('get-store', key),
   getStoreAll: () => ipcRenderer.invoke('get-store-all'),
