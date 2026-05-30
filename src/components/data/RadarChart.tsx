@@ -1,8 +1,11 @@
+import { useState, useEffect } from 'react'
 import ReactECharts from 'echarts-for-react'
 import { getChartTheme } from '../../lib/chartTheme'
 import type { VideoAnalysis } from '../../types/electron'
 
 export default function RadarChart({ stats }: { stats: VideoAnalysis }) {
+  const [ready, setReady] = useState(false)
+  useEffect(() => { const t = setTimeout(() => setReady(true), 50); return () => clearTimeout(t) }, [])
   const theme = getChartTheme()
   const option = {
     ...theme,
@@ -31,5 +34,6 @@ export default function RadarChart({ stats }: { stats: VideoAnalysis }) {
       }],
     }],
   }
+  if (!ready) return <div style={{ height: 300 }} />
   return <ReactECharts option={option} style={{ height: 300 }} />
 }

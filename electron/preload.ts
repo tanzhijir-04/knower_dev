@@ -50,6 +50,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getVideosBySource: (platform: string, sourceUid: string) => ipcRenderer.invoke('get-videos-by-source', platform, sourceUid),
   // 创作者
   cleanOldData: () => ipcRenderer.invoke('clean-old-data'),
+  importDb: () => ipcRenderer.invoke('import-db'),
+  checkLoginStates: () => ipcRenderer.invoke('check-login-states'),
+  clearLoginState: (platform: string) => ipcRenderer.invoke('clear-login-state', platform),
   getCreators: () => ipcRenderer.invoke('get-creators'),
   deleteMessage: (id: number) => ipcRenderer.invoke('delete-message', id),
   searchMessages: (query: string) => ipcRenderer.invoke('search-messages', query),
@@ -61,6 +64,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   autoCategorize: (platform: string) => ipcRenderer.invoke('auto-categorize', platform),
   getCategories: (platform: string) => ipcRenderer.invoke('get-categories', platform),
   updateCategory: (contentId: string, category: string) => ipcRenderer.invoke('update-category', contentId, category),
+  // API 连接测试
+  testConnection: (settings: { provider: string; apiKey: string; baseUrl: string; model: string }) =>
+    ipcRenderer.invoke('test-connection', settings),
   // 灵感库
   suggestTopics: (platform: string) => ipcRenderer.invoke('topics-suggest', platform),
   getTopicTrends: (platform: string) => ipcRenderer.invoke('topics-trends', platform),

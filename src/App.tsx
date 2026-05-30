@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import Sidebar from './components/Sidebar'
 import ChatView from './components/ChatView'
 import TopicsView from './components/TopicsView'
@@ -6,15 +6,51 @@ import DataView from './components/DataView'
 import SettingsView from './components/SettingsView'
 import { ToastProvider } from './contexts/ToastContext'
 import { PlatformProvider } from './contexts/PlatformContext'
+import { pageEnter, pageExit } from './lib/gsap'
+import { Minus, Square, X } from '@phosphor-icons/react'
 import type { TopicSuggestion } from './types/electron'
 
 export type Page = 'chat' | 'topics' | 'data' | 'settings'
+
+const PAGE_ORDER: Page[] = ['chat', 'data', 'topics', 'settings']
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<Page>('chat')
   const [pendingTopic, setPendingTopic] = useState<TopicSuggestion | null>(null)
   const [openConversationId, setOpenConversationId] = useState<number | null>(null)
   const [conversationVersion, setConversationVersion] = useState(0)
+  const prevPageRef = useRef<Page>('chat')
+  const pageRefs = useRef<Record<Page, HTMLDivElement | null>>({
+    chat: null, data: null, topics: null, settings: null,
+  })
+  const animatingRef = useRef(false)
+
+  const navigateTo = useCallback((page: Page) => {
+    if (page === currentPage || animatingRef.current) return
+    animatingRef.current = true
+
+    const oldPage = currentPage
+    const oldEl = pageRefs.current[oldPage]
+    const newEl = pageRefs.current[page]
+    if (!oldEl || !newEl) { setCurrentPage(page); animatingRef.current = false; return }
+
+    const oldIdx = PAGE_ORDER.indexOf(oldPage)
+    const newIdx = PAGE_ORDER.indexOf(page)
+    const direction = newIdx > oldIdx ? 'right' : 'left'
+
+    // Show new page underneath
+    newEl.style.display = 'flex'
+    newEl.style.opacity = '0'
+
+    // Animate old page out, then new page in
+    pageExit(oldEl, direction)
+    pageEnter(newEl, direction)
+
+    prevPageRef.current = oldPage
+    setCurrentPage(page)
+
+    setTimeout(() => { animatingRef.current = false }, 350)
+  }, [currentPage])
 
   // Listen for topic-to-chat events from main process
   useEffect(() => {
@@ -24,18 +60,25 @@ export default function App() {
       try {
         const topic = JSON.parse(raw)
         setPendingTopic(topic)
-        setCurrentPage('chat')
+        navigateTo('chat')
       } catch { /* ignore */ }
     })
     return unsub
-  }, [])
+  }, [navigateTo])
 
   const handleSendTopicToChat = (topic: TopicSuggestion) => {
     setPendingTopic(topic)
-    setCurrentPage('chat')
+    navigateTo('chat')
   }
 
   const isWindows = window.electronAPI?.platform !== 'darwin'
+
+  const pageStyle = (page: Page): React.CSSProperties => ({
+    display: currentPage === page ? 'flex' : 'none',
+    flex: 1,
+    flexDirection: 'column',
+    overflow: 'hidden',
+  })
 
   return (
     <ToastProvider>
@@ -43,11 +86,11 @@ export default function App() {
         <div className="flex h-screen bg-canvas">
           <Sidebar
             currentPage={currentPage}
-            onNavigate={setCurrentPage}
+            onNavigate={navigateTo}
             conversationVersion={conversationVersion}
             onOpenConversation={(id) => {
               setOpenConversationId(id)
-              setCurrentPage('chat')
+              navigateTo('chat')
             }}
           />
           <div className="flex-1 flex flex-col overflow-hidden">
@@ -58,38 +101,38 @@ export default function App() {
                 <div className="flex items-center gap-0.5 px-2 shrink-0 no-drag">
                   <button onClick={() => window.electronAPI?.minimizeWindow()}
                     className="w-11 h-8 rounded flex items-center justify-center text-muted hover:bg-hairline hover:text-ink transition-colors">
-                    <span className="material-symbols-outlined text-[16px]">remove</span>
+                    <Minus className="w-4 h-4" />
                   </button>
                   <button onClick={() => window.electronAPI?.maximizeWindow()}
                     className="w-11 h-8 rounded flex items-center justify-center text-muted hover:bg-hairline hover:text-ink transition-colors">
-                    <span className="material-symbols-outlined text-[14px]">crop_square</span>
+                    <Square className="w-3.5 h-3.5" />
                   </button>
                   <button onClick={() => window.electronAPI?.closeWindow()}
                     className="w-11 h-8 rounded flex items-center justify-center text-muted hover:bg-red-500 hover:text-white transition-colors">
-                    <span className="material-symbols-outlined text-[16px]">close</span>
+                    <X className="w-4 h-4" />
                   </button>
                 </div>
               </div>
             )}
 
             {/* 所有页面始终挂载，用 display 控制显示 */}
-            <div style={{ display: currentPage === 'chat' ? 'flex' : 'none', flex: 1, flexDirection: 'column', overflow: 'hidden' }}>
+            <div ref={el => { pageRefs.current.chat = el }} style={pageStyle('chat')}>
               <ChatView
                 pendingTopic={pendingTopic}
                 onTopicConsumed={() => setPendingTopic(null)}
                 initialConversationId={openConversationId}
                 onConversationOpened={() => setOpenConversationId(null)}
-                onNavigate={setCurrentPage}
+                onNavigate={navigateTo}
                 onConversationChange={() => setConversationVersion(v => v + 1)}
               />
             </div>
-            <div style={{ display: currentPage === 'data' ? 'flex' : 'none', flex: 1, flexDirection: 'column', overflow: 'hidden' }}>
+            <div ref={el => { pageRefs.current.data = el }} style={pageStyle('data')}>
               <DataView />
             </div>
-            <div style={{ display: currentPage === 'topics' ? 'flex' : 'none', flex: 1, flexDirection: 'column', overflow: 'hidden' }}>
+            <div ref={el => { pageRefs.current.topics = el }} style={pageStyle('topics')}>
               <TopicsView onSendToChat={handleSendTopicToChat} />
             </div>
-            <div style={{ display: currentPage === 'settings' ? 'flex' : 'none', flex: 1, flexDirection: 'column', overflow: 'hidden' }}>
+            <div ref={el => { pageRefs.current.settings = el }} style={pageStyle('settings')}>
               <SettingsView />
             </div>
           </div>

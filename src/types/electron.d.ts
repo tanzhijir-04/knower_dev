@@ -216,6 +216,9 @@ export interface ElectronAPI {
   getVideosBySource: (platform: string, sourceUid: string) => Promise<CrawlContent[]>
   // 创作者
   cleanOldData: () => Promise<boolean>
+  importDb: () => Promise<{ success: boolean; canceled?: boolean; tables?: string[]; error?: string }>
+  checkLoginStates: () => Promise<Record<string, boolean>>
+  clearLoginState: (platform: string) => Promise<boolean>
   getCreators: () => Promise<CreatorInfo[]>
   starCreator: (uid: string) => Promise<boolean>
   pinCreator: (uid: string) => Promise<boolean>
@@ -227,6 +230,8 @@ export interface ElectronAPI {
   autoCategorize: (platform: string) => Promise<AutoCategorizeResult>
   getCategories: (platform: string) => Promise<CategoryInfo[]>
   updateCategory: (contentId: string, category: string) => Promise<boolean>
+  // API 连接测试
+  testConnection: (settings: { provider: string; apiKey: string; baseUrl: string; model: string }) => Promise<{ ok: boolean; msg: string }>
   // 灵感库
   suggestTopics: (platform: string) => Promise<{ topics: TopicSuggestion[]; error?: string }>
   getTopicTrends: (platform: string) => Promise<TrendData[]>

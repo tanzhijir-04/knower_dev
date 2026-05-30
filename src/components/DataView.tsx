@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import type { CrawlContent, VideoAnalysis, SourceInfo, CreatorInfo } from '../types/electron'
 import { usePlatform } from '../contexts/PlatformContext'
+import { gsap } from '../lib/gsap'
 import TrendChart from './data/TrendChart'
 import CategoryChart from './data/CategoryChart'
 import TimeChart from './data/TimeChart'
@@ -8,6 +9,8 @@ import RadarChart from './data/RadarChart'
 import ScatterChart from './data/ScatterChart'
 import VideoDetailPanel from './data/VideoDetailPanel'
 import ExportMenu from './data/ExportMenu'
+import { ChartBar, Tag, Clock, TrendUp, PlayCircle, ThumbsUp, ChatsCircle, ShareNetwork, Users, BookmarkSimple, Coin, Subtitles, TextAa, ChartLineUp, ChartPie, ChartPolar, ChartScatter, Brain, Trophy, Lightbulb, Note, MagnifyingGlass, Database, Plus, DotsThree, Person, Sparkle, CheckCircle, WarningCircle, HourglassSimple, StackSimple, ArrowDown, ArrowUp, FunnelSimple, MagicWand, ArrowRight, Download, Trash } from '@phosphor-icons/react'
+import type { ComponentType } from 'react'
 
 type Mode = 'search' | 'creator'
 
@@ -28,27 +31,27 @@ function formatDate(s: string) {
 //  数据维度定义
 // ============================================================
 
-const DIMENSIONS = [
-  { key: 'play_count', label: '播放量', icon: 'play_circle' },
-  { key: 'like_count', label: '点赞数', icon: 'thumb_up' },
-  { key: 'comment_count', label: '评论数', icon: 'comment' },
-  { key: 'share_count', label: '分享数', icon: 'share' },
-  { key: 'total_fans', label: '粉丝数', icon: 'group' },
-  { key: 'favorite_count', label: '收藏数', icon: 'bookmark' },
-  { key: 'coin_count', label: '投币数', icon: 'paid' },
-  { key: 'danmaku', label: '弹幕数', icon: 'subtitles' },
-  { key: 'engagement_rate', label: '互动率', icon: 'trending_up' },
-  { key: 'publish_time', label: '发布时间', icon: 'schedule' },
-  { key: 'category', label: '内容分类', icon: 'category' },
-  { key: 'title_length', label: '标题长度', icon: 'text_fields' },
+const DIMENSIONS: { key: string; label: string; icon: ComponentType<{ className?: string }> }[] = [
+  { key: 'play_count', label: '播放量', icon: PlayCircle },
+  { key: 'like_count', label: '点赞数', icon: ThumbsUp },
+  { key: 'comment_count', label: '评论数', icon: ChatsCircle },
+  { key: 'share_count', label: '分享数', icon: ShareNetwork },
+  { key: 'total_fans', label: '粉丝数', icon: Users },
+  { key: 'favorite_count', label: '收藏数', icon: BookmarkSimple },
+  { key: 'coin_count', label: '投币数', icon: Coin },
+  { key: 'danmaku', label: '弹幕数', icon: Subtitles },
+  { key: 'engagement_rate', label: '互动率', icon: TrendUp },
+  { key: 'publish_time', label: '发布时间', icon: Clock },
+  { key: 'category', label: '内容分类', icon: Tag },
+  { key: 'title_length', label: '标题长度', icon: TextAa },
 ]
 
-const CHART_TABS = [
-  { key: 'trend', label: '播放趋势', icon: 'show_chart' },
-  { key: 'category', label: '分类占比', icon: 'pie_chart' },
-  { key: 'time', label: '发布时间', icon: 'schedule' },
-  { key: 'radar', label: '综合评分', icon: 'radar' },
-  { key: 'scatter', label: '标题分析', icon: 'scatter_plot' },
+const CHART_TABS: { key: string; label: string; icon: ComponentType<{ className?: string }> }[] = [
+  { key: 'trend', label: '播放趋势', icon: ChartLineUp },
+  { key: 'category', label: '分类占比', icon: ChartPie },
+  { key: 'time', label: '发布时间', icon: Clock },
+  { key: 'radar', label: '综合评分', icon: ChartPolar },
+  { key: 'scatter', label: '标题分析', icon: ChartScatter },
 ]
 
 // ============================================================
@@ -83,7 +86,7 @@ function ProgressBar({ status, logs }: { status: string; logs?: string[] }) {
   return (
     <div className="bg-canvas-soft rounded-xl px-5 py-4">
       <div className="flex items-center gap-3 mb-2">
-        {isDone ? (<span className="material-symbols-outlined text-[20px] text-semantic-success">check_circle</span>) : isFailed ? (<span className="material-symbols-outlined text-[20px] text-semantic-error">error</span>) : (<div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />)}
+        {isDone ? (<CheckCircle className="w-5 h-5 text-semantic-success" />) : isFailed ? (<WarningCircle className="w-5 h-5 text-semantic-error" />) : (<div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />)}
         <span className="text-sm text-ink font-medium">{status}</span>
       </div>
       {logs && logs.length > 0 && (
@@ -110,25 +113,31 @@ function OverviewCards({ overview, selectedDimensions, fans }: {
   selectedDimensions: string[]
   fans?: number
 }) {
-  const allCards = [
-    { key: 'play_count', label: '总播放量', value: overview.totalPlay, icon: 'play_circle' },
-    { key: 'like_count', label: '总点赞数', value: overview.totalLike, icon: 'thumb_up' },
-    { key: 'comment_count', label: '总评论数', value: overview.totalComment, icon: 'comment' },
-    { key: 'share_count', label: '总分享数', value: overview.totalShare, icon: 'share' },
-    { key: 'total_fans', label: '粉丝数', value: fans || 0, icon: 'group' },
-    { key: 'favorite_count', label: '总收藏数', value: overview.totalFavorite, icon: 'bookmark' },
-    { key: 'coin_count', label: '总投币数', value: overview.totalCoin, icon: 'paid' },
-    { key: 'danmaku', label: '总弹幕数', value: overview.totalDanmaku, icon: 'subtitles' },
-    { key: 'engagement_rate', label: '平均互动率', value: overview.avgEngagement, icon: 'analytics', suffix: '%' },
+  const handleCardHover = (e: React.MouseEvent<HTMLDivElement>) => {
+    gsap.to(e.currentTarget, { scale: 1.02, boxShadow: '0 4px 20px rgba(0,0,0,0.08)', duration: 0.2, ease: 'power2.out' })
+  }
+  const handleCardLeave = (e: React.MouseEvent<HTMLDivElement>) => {
+    gsap.to(e.currentTarget, { scale: 1, boxShadow: 'none', duration: 0.2, ease: 'power2.out' })
+  }
+  const allCards: { key: string; label: string; value: number; icon: ComponentType<{ className?: string }>; suffix?: string }[] = [
+    { key: 'play_count', label: '总播放量', value: overview.totalPlay, icon: PlayCircle },
+    { key: 'like_count', label: '总点赞数', value: overview.totalLike, icon: ThumbsUp },
+    { key: 'comment_count', label: '总评论数', value: overview.totalComment, icon: ChatsCircle },
+    { key: 'share_count', label: '总分享数', value: overview.totalShare, icon: ShareNetwork },
+    { key: 'total_fans', label: '粉丝数', value: fans || 0, icon: Users },
+    { key: 'favorite_count', label: '总收藏数', value: overview.totalFavorite, icon: BookmarkSimple },
+    { key: 'coin_count', label: '总投币数', value: overview.totalCoin, icon: Coin },
+    { key: 'danmaku', label: '总弹幕数', value: overview.totalDanmaku, icon: Subtitles },
+    { key: 'engagement_rate', label: '平均互动率', value: overview.avgEngagement, icon: ChartBar, suffix: '%' },
   ]
   const cards = allCards.filter(c => selectedDimensions.includes(c.key))
   if (cards.length === 0) return null
   return (
     <div className={`grid gap-3 ${cards.length <= 4 ? 'grid-cols-4' : cards.length <= 6 ? 'grid-cols-3' : 'grid-cols-4'}`}>
       {cards.map(c => (
-        <div key={c.key} className="overview-card">
+        <div key={c.key} className="overview-card" onMouseEnter={handleCardHover} onMouseLeave={handleCardLeave}>
           <div className="flex items-center gap-1.5 mb-1">
-            <span className="material-symbols-outlined text-[14px] text-primary">{c.icon}</span>
+            <span className="text-primary"><c.icon className="w-3.5 h-3.5" /></span>
             <span className="text-[11px] text-muted">{c.label}</span>
           </div>
           <p className="text-xl font-semibold text-ink">
@@ -160,7 +169,7 @@ function DimensionSelector({ selected, onChange }: { selected: string[]; onChang
               : 'bg-canvas-soft text-muted border border-hairline/30 hover:border-hairline'
           }`}
         >
-          <span className="material-symbols-outlined text-[12px]">{d.icon}</span>
+          <span><d.icon className="w-3 h-3" /></span>
           {d.label}
         </button>
       ))}
@@ -176,7 +185,7 @@ function ContentPatternsCard({ analysis }: { analysis: VideoAnalysis }) {
   return (
     <div className="bg-canvas-soft rounded-xl p-5">
       <h3 className="text-sm font-medium text-ink mb-4 flex items-center gap-2">
-        <span className="material-symbols-outlined text-[18px] text-primary">psychology</span>
+        <Brain className="w-4 h-4 text-primary" />
         内容规律
       </h3>
       {analysis.topTopics && analysis.topTopics.length > 0 && (
@@ -228,7 +237,7 @@ function EngagementTable({ items }: { items: VideoAnalysis['topByEngagement'] })
   return (
     <div className="bg-canvas-soft rounded-xl p-5">
       <h3 className="text-sm font-medium text-ink mb-4 flex items-center gap-2">
-        <span className="material-symbols-outlined text-[18px] text-primary">leaderboard</span>
+        <Trophy className="w-4 h-4 text-primary" />
         内容质量排行
       </h3>
       <table className="w-full text-xs">
@@ -277,18 +286,18 @@ function EngagementTable({ items }: { items: VideoAnalysis['topByEngagement'] })
 
 function SuggestionsCard({ suggestions, videoCount }: { suggestions: string[]; videoCount: number }) {
   if (!suggestions || suggestions.length === 0) return null
-  const icons = ['lightbulb', 'edit_note', 'schedule']
+  const icons: ComponentType<{ className?: string }>[] = [Lightbulb, Note, Clock]
   return (
     <div className="bg-canvas-soft rounded-xl p-5">
       <h3 className="text-sm font-medium text-ink mb-4 flex items-center gap-2">
-        <span className="material-symbols-outlined text-[18px] text-primary">tips_and_updates</span>
+        <MagicWand className="w-4 h-4 text-primary" />
         下一步建议
       </h3>
       <div className="space-y-3">
         {suggestions.map((s, i) => (
           <div key={i} className="flex gap-3">
             <div className="w-6 h-6 rounded bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
-              <span className="material-symbols-outlined text-[14px] text-primary">{icons[i] || 'arrow_right'}</span>
+              {(() => { const Icon = icons[i] || ArrowRight; return <Icon className="w-3.5 h-3.5 text-primary" />; })()}
             </div>
             <div className="flex-1">
               <p className="text-xs text-ink leading-relaxed">{s}</p>
@@ -329,22 +338,22 @@ function ContextMenu({
       {isCreator && (
         <>
           <button onClick={() => { onStar(); onClose() }} className="w-full px-3 py-2 text-left text-xs text-ink hover:bg-canvas-soft flex items-center gap-2">
-            <span className={source.isStarred ? 'text-primary' : ''}>{source.isStarred ? '★' : '☆'}</span>
+            <BookmarkSimple className={`w-3.5 h-3.5 ${source.isStarred ? 'text-primary' : 'text-muted'}`} weight={source.isStarred ? 'fill' : 'regular'} />
             {source.isStarred ? '取消收藏' : '收藏'}
           </button>
           <button onClick={() => { onPin(); onClose() }} className="w-full px-3 py-2 text-left text-xs text-ink hover:bg-canvas-soft flex items-center gap-2">
-            <span className={source.isPinned ? 'text-semantic-success' : ''}>{source.isPinned ? '📌' : '📍'}</span>
+            <FunnelSimple className={`w-3.5 h-3.5 ${source.isPinned ? 'text-semantic-success' : 'text-muted'}`} weight={source.isPinned ? 'fill' : 'regular'} />
             {source.isPinned ? '取消置顶' : '置顶'}
           </button>
           <div className="h-px bg-hairline mx-2 my-1" />
         </>
       )}
       <button onClick={() => { onExport(); onClose() }} className="w-full px-3 py-2 text-left text-xs text-ink hover:bg-canvas-soft flex items-center gap-2">
-        <span>📦</span> 导出数据
+        <Download className="w-3.5 h-3.5 text-muted" /> 导出数据
       </button>
       <div className="h-px bg-hairline mx-2 my-1" />
       <button onClick={() => { onDelete(); onClose() }} className="w-full px-3 py-2 text-left text-xs text-semantic-error hover:bg-semantic-error/10 flex items-center gap-2">
-        <span>🗑️</span> 删除数据
+        <Trash className="w-3.5 h-3.5 text-semantic-error" /> 删除数据
       </button>
     </div>
   )
@@ -355,11 +364,11 @@ function ContextMenu({
 // ============================================================
 
 function Sidebar({
-  sources, selectedSource, searchQuery, onSearchChange, onSelect,
+  sources, selectedSource, searchQuery, onMagnifyingGlassChange, onSelect,
   onNewCrawl, onContextMenu, onMoreMenu,
 }: {
   sources: SourceInfo[]; selectedSource: string; searchQuery: string
-  onSearchChange: (q: string) => void; onSelect: (uid: string) => void
+  onMagnifyingGlassChange: (q: string) => void; onSelect: (uid: string) => void
   onNewCrawl: () => void
   onContextMenu: (e: React.MouseEvent, source: SourceInfo) => void
   onMoreMenu: (e: React.MouseEvent) => void
@@ -376,12 +385,12 @@ function Sidebar({
   const keywords = filtered.filter(s => s.type === 'keyword')
   const totalCount = sources.reduce((s, src) => s + src.count, 0)
 
-  const renderGroup = (title: string, icon: string, items: SourceInfo[]) => {
+  const renderGroup = (title: string, Icon: ComponentType<{ className?: string }>, items: SourceInfo[]) => {
     if (items.length === 0) return null
     return (
       <div className="mb-1">
         <div className="text-[10px] text-muted uppercase tracking-wider px-4 py-2 flex items-center gap-1.5">
-          <span className="material-symbols-outlined text-[12px]">{icon}</span>
+          <Icon className="w-3 h-3" />
           {title}
         </div>
         {items.map(s => (
@@ -401,10 +410,10 @@ function Sidebar({
     <div className="w-60 bg-canvas-soft border-r border-hairline flex flex-col shrink-0">
       <div className="p-2">
         <div className="relative">
-          <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-[16px] text-muted">search</span>
+          <MagnifyingGlass className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
           <input
             value={searchQuery}
-            onChange={e => onSearchChange(e.target.value)}
+            onChange={e => onMagnifyingGlassChange(e.target.value)}
             placeholder="搜索来源..."
             className="w-full bg-canvas-soft rounded-lg pl-8 pr-3 py-2 text-xs text-ink placeholder:text-muted outline-none focus:ring-1 focus:ring-primary/50"
           />
@@ -412,14 +421,14 @@ function Sidebar({
       </div>
 
       <div className="flex-1 overflow-auto px-1">
-        {renderGroup('置顶', 'push_pin', pinned)}
-        {renderGroup('收藏', 'star', starred)}
-        {renderGroup('创作者', 'person', creators)}
-        {renderGroup('关键词', 'search', keywords)}
+        {renderGroup('置顶', FunnelSimple, pinned)}
+        {renderGroup('收藏', BookmarkSimple, starred)}
+        {renderGroup('创作者', Person, creators)}
+        {renderGroup('关键词', MagnifyingGlass, keywords)}
 
         <div className="mb-1">
           <div className="text-[10px] text-muted uppercase tracking-wider px-4 py-2 flex items-center gap-1.5">
-            <span className="material-symbols-outlined text-[12px]">database</span>
+            <Database className="w-3 h-3" />
             全部
           </div>
           <button
@@ -431,7 +440,7 @@ function Sidebar({
             }`}
           >
             <div className="w-8 h-8 rounded-full bg-canvas-soft flex items-center justify-center">
-              <span className="material-symbols-outlined text-[16px] text-muted">analytics</span>
+              <ChartBar className="w-4 h-4 text-muted" />
             </div>
             <span className="text-xs text-ink flex-1 truncate">全部数据</span>
             <span className="text-[10px] text-muted">{totalCount}</span>
@@ -444,14 +453,14 @@ function Sidebar({
           onClick={onNewCrawl}
           className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-primary/10 text-primary text-xs hover:bg-primary/20 transition-colors"
         >
-          <span className="material-symbols-outlined text-[16px]">add</span>
+          <Plus className="w-4 h-4" />
           新建爬取
         </button>
         <button
           onClick={onMoreMenu}
           className="px-2 py-2 rounded-lg text-muted hover:bg-canvas-soft transition-colors"
         >
-          <span className="material-symbols-outlined text-[18px]">more_horiz</span>
+          <DotsThree className="w-4 h-4" />
         </button>
       </div>
     </div>
@@ -493,7 +502,7 @@ export default function DataView() {
   const [crawlPlatform, setCrawlPlatform] = useState('bili')
   const [analyzing, setAnalyzing] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [searchQuery, setSearchQuery] = useState('')
+  const [searchQuery, setMagnifyingGlassQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('')
   const [categorizing, setCategorizing] = useState(false)
   const [categorizeStatus, setCategorizeStatus] = useState('')
@@ -513,6 +522,20 @@ export default function DataView() {
   ])
   const [activeChart, setActiveChart] = useState('trend')
   const [selectedVideo, setSelectedVideo] = useState<CrawlContent | null>(null)
+  const chartContainerRef = useRef<HTMLDivElement>(null)
+  const prevChartRef = useRef('trend')
+
+  // Chart transition animation
+  useEffect(() => {
+    if (prevChartRef.current !== activeChart && chartContainerRef.current) {
+      const el = chartContainerRef.current
+      gsap.fromTo(el,
+        { opacity: 0, y: 8 },
+        { opacity: 1, y: 0, duration: 0.3, ease: 'power2.out', clearProps: 'transform' }
+      )
+    }
+    prevChartRef.current = activeChart
+  }, [activeChart])
 
   // 表格排序/筛选/分页
   const [sortField, setSortField] = useState('playCount')
@@ -809,11 +832,11 @@ export default function DataView() {
         <div className="flex gap-1">
           <button onClick={() => setMode('search')}
             className={`px-3 py-1 text-[11px] rounded-full transition-colors ${mode === 'search' ? 'bg-primary/20 text-primary' : 'bg-canvas-soft text-muted hover:text-ink'}`}>
-            <span className="material-symbols-outlined text-[12px] align-[-2px] mr-1">search</span>关键词搜索
+            <MagnifyingGlass className="w-3 h-3 mr-1" />关键词搜索
           </button>
           <button onClick={() => setMode('creator')}
             className={`px-3 py-1 text-[11px] rounded-full transition-colors ${mode === 'creator' ? 'bg-primary/20 text-primary' : 'bg-canvas-soft text-muted hover:text-ink'}`}>
-            <span className="material-symbols-outlined text-[12px] align-[-2px] mr-1">person</span>用户主页
+            <Person className="w-3 h-3 mr-1" />用户主页
           </button>
         </div>
       </div>
@@ -841,12 +864,12 @@ export default function DataView() {
         </button>
         <button onClick={runAIAnalysis} disabled={analyzing || videos.length === 0}
           className="px-4 py-1.5 bg-canvas-soft border border-hairline text-ink text-xs rounded hover:bg-surface-strong disabled:opacity-40">
-          <span className="material-symbols-outlined text-[12px] align-[-2px] mr-1">auto_awesome</span>
+          <Sparkle className="w-3 h-3 mr-1" />
           {analyzing ? '分析中...' : 'AI 分析'}
         </button>
         <button onClick={runAutoCategorize} disabled={categorizing || videos.length === 0}
           className="px-4 py-1.5 bg-primary/10 border border-primary/30 text-primary text-xs rounded hover:bg-primary/20 disabled:opacity-40">
-          <span className="material-symbols-outlined text-[12px] align-[-2px] mr-1">label</span>
+          <Tag className="w-3 h-3 mr-1" />
           {categorizing ? '分类中...' : 'AI 一键分类'}
         </button>
       </div>
@@ -855,7 +878,7 @@ export default function DataView() {
       <div className="flex flex-1 overflow-hidden">
         <Sidebar
           sources={sources} selectedSource={selectedSource} searchQuery={searchQuery}
-          onSearchChange={setSearchQuery} onSelect={setSelectedSource} onNewCrawl={handleNewCrawl}
+          onMagnifyingGlassChange={setMagnifyingGlassQuery} onSelect={setSelectedSource} onNewCrawl={handleNewCrawl}
           onContextMenu={(e, s) => setContextMenu({ x: e.clientX, y: e.clientY, source: s })}
           onMoreMenu={(e) => setMoreMenuOpen(!moreMenuOpen)}
         />
@@ -868,7 +891,7 @@ export default function DataView() {
             </div>
           ) : videos.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-32">
-              <span className="material-symbols-outlined text-[48px] text-muted mb-4">analytics</span>
+              <ChartBar className="w-12 h-12 text-muted mb-4" />
               <p className="text-sm text-body">
                 {selectedSource === 'all' ? '还没有数据，输入关键词或用户 UID 开始爬取' : '该来源暂无数据'}
               </p>
@@ -879,7 +902,7 @@ export default function DataView() {
               {aiStatus && <ProgressBar status={aiStatus} />}
               {categorizeStatus && (
                 <div className="bg-primary/5 border border-primary/20 rounded-xl px-4 py-3 flex items-center gap-2">
-                  <span className="material-symbols-outlined text-[16px] text-primary">label</span>
+                  <Tag className="w-4 h-4 text-primary" />
                   <span className="text-xs text-ink">{categorizeStatus}</span>
                 </div>
               )}
@@ -906,7 +929,7 @@ export default function DataView() {
               {currentSource && currentSource.type === 'keyword' && (
                 <div className="bg-canvas-soft rounded-xl p-5 flex items-center gap-4">
                   <div className="w-12 h-12 rounded-full bg-surface-strong flex items-center justify-center">
-                    <span className="material-symbols-outlined text-[24px] text-primary">search</span>
+                    <MagnifyingGlass className="w-6 h-6 text-primary" />
                   </div>
                   <div>
                     <h2 className="text-lg font-medium text-ink">{currentSource.sourceName}</h2>
@@ -918,7 +941,7 @@ export default function DataView() {
               {/* 数据维度选择器 */}
               <div className="bg-canvas-soft rounded-xl px-4 py-3">
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="material-symbols-outlined text-[14px] text-primary">tune</span>
+                  <FunnelSimple className="w-3.5 h-3.5 text-primary" />
                   <span className="text-[11px] text-muted">数据维度</span>
                 </div>
                 <DimensionSelector selected={selectedDimensions} onChange={setSelectedDimensions} />
@@ -935,12 +958,12 @@ export default function DataView() {
                       className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] rounded-full transition-colors ${
                         activeChart === c.key ? 'bg-primary/20 text-primary' : 'bg-canvas-soft text-muted hover:text-ink'
                       }`}>
-                      <span className="material-symbols-outlined text-[14px]">{c.icon}</span>
+                      <c.icon className="w-3.5 h-3.5" />
                       {c.label}
                     </button>
                   ))}
                 </div>
-                <div className="chart-card">
+                <div ref={chartContainerRef} className="chart-card">
                   {activeChart === 'trend' && <TrendChart data={filteredVideos} />}
                   {activeChart === 'category' && <CategoryChart data={filteredVideos} />}
                   {activeChart === 'time' && <TimeChart data={filteredVideos} />}
@@ -964,8 +987,8 @@ export default function DataView() {
               {!analysis && videos.length > 0 && (
                 <button onClick={runAIAnalysis} disabled={analyzing}
                   className="w-full bg-canvas-soft rounded-xl p-6 text-center hover:bg-surface-strong transition-colors">
-                  <span className="material-symbols-outlined text-[32px] text-primary mb-3 block">
-                    {analyzing ? 'hourglass_empty' : 'auto_awesome'}
+                  <span className="text-primary mb-3 block">
+                    {analyzing ? <HourglassSimple className="w-8 h-8" /> : <Sparkle className="w-8 h-8" />}
                   </span>
                   <p className="text-sm text-ink mb-1">
                     {analyzing ? 'AI 正在分析数据...' : '点击「AI 分析」获取深度洞察'}
@@ -980,7 +1003,7 @@ export default function DataView() {
               {videos.length > 0 && (
                 <div className="bg-canvas-soft rounded-xl px-4 py-3">
                   <div className="flex items-center gap-2 mb-2">
-                    <span className="material-symbols-outlined text-[14px] text-primary">category</span>
+                    <Tag className="w-3.5 h-3.5 text-primary" />
                     <span className="text-[11px] text-muted">按分类筛选</span>
                   </div>
                   <div className="flex flex-wrap gap-1.5">
@@ -1007,7 +1030,7 @@ export default function DataView() {
                 <div className="bg-surface rounded-xl border border-hairline/30 overflow-hidden">
                   <div className="flex items-center justify-between px-4 py-3 border-b border-hairline/20">
                     <span className="text-sm font-medium text-ink flex items-center gap-2">
-                      <span className="material-symbols-outlined text-[16px] text-primary">video_library</span>
+                      <StackSimple className="w-4 h-4 text-primary" />
                       数据列表（{sortedVideos.length} 条）
                     </span>
                     <div className="flex items-center gap-2">
@@ -1022,9 +1045,7 @@ export default function DataView() {
                       </select>
                       <button onClick={() => { setSortDir(d => d === 'desc' ? 'asc' : 'desc'); setTablePage(0) }}
                         className="p-1.5 rounded-lg text-muted hover:text-ink hover:bg-canvas-soft">
-                        <span className="material-symbols-outlined text-[16px]">
-                          {sortDir === 'desc' ? 'arrow_downward' : 'arrow_upward'}
-                        </span>
+                        {sortDir === 'desc' ? <ArrowDown className="w-4 h-4" /> : <ArrowUp className="w-4 h-4" />}
                       </button>
                       {/* 分类筛选 */}
                       <select value={selectedCategory} onChange={e => { setSelectedCategory(e.target.value); setTablePage(0) }}
@@ -1111,7 +1132,7 @@ export default function DataView() {
           style={{ bottom: 60, right: 20 }} onClick={e => e.stopPropagation()}>
           <button onClick={() => { handleExportAll(); setMoreMenuOpen(false) }}
             className="w-full px-3 py-2 text-left text-xs text-ink hover:bg-canvas-soft flex items-center gap-2">
-            <span>📦</span> 导出全部数据
+            <Download className="w-3.5 h-3.5 text-muted" /> 导出全部数据
           </button>
           <div className="h-px bg-hairline mx-2 my-1" />
           <button onClick={async () => {
@@ -1121,7 +1142,7 @@ export default function DataView() {
             setSelectedSource('all')
             await loadSources()
           }} className="w-full px-3 py-2 text-left text-xs text-semantic-error hover:bg-semantic-error/10 flex items-center gap-2">
-            <span>🗑️</span> 清空全部历史
+            <Trash className="w-3.5 h-3.5 text-semantic-error" /> 清空全部历史
           </button>
         </div>
       )}

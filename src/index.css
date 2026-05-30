@@ -2,8 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ========== CSS 变量 — Light ========== */
-
+/* ========== CSS Variables — Light ========== */
 :root {
   --canvas: #f7f7f4;
   --canvas-soft: #fafaf7;
@@ -20,83 +19,63 @@
   --primary: #f54e00;
   --primary-active: #d04200;
   --on-primary: #ffffff;
-
-  /* AI 时间线 */
   --timeline-thinking: #dfa88f;
   --timeline-grep: #9fc9a2;
   --timeline-read: #9fbbe0;
   --timeline-edit: #c0a8dd;
   --timeline-done: #c08532;
-
-  /* 语义色 */
   --semantic-success: #1f8a65;
   --semantic-error: #cf2d56;
 }
 
-/* ========== CSS 变量 — Dark (Cursor 暖色调) ========== */
-
+/* ========== CSS Variables — Dark ========== */
 .dark {
-  /* 画布 — 暖深色，不是纯黑 */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
   --canvas: #1c1b18;
   --canvas-soft: #232220;
-
-  /* 表面 — 比画布略亮，卡片用 */
   --surface: #2a2926;
   --surface-strong: #3a3835;
   --surface-low: #232220;
-
-  /* 发丝线 — 暗色模式下用更亮的线 */
   --hairline: #3a3835;
   --hairline-soft: #2f2e2b;
   --hairline-strong: #4a4845;
-
-  /* 文字 — 暖色调，不用纯白 */
   --ink: #e8e5dd;
   --body: #b0ada5;
   --muted: #7a776f;
   --muted-soft: #5a5852;
-
-  /* 强调色 — 暗色下提亮 */
   --primary: #ff6a2a;
   --primary-active: #e05520;
   --on-primary: #ffffff;
-
-  /* AI 时间线 — 暗色下饱和度略降 */
   --timeline-thinking: #c48a6f;
   --timeline-grep: #7aab7e;
   --timeline-read: #7a9ec4;
   --timeline-edit: #a088c0;
   --timeline-done: #c08532;
-
-  /* 语义色 */
   --semantic-success: #3dba90;
   --semantic-error: #e05570;
 }
 
-/* ========== 动画定义 ========== */
-
+/* ========== Keyframes ========== */
 @keyframes fade-in {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
 }
-
 @keyframes blink {
   0%, 50% { opacity: 1; }
   51%, 100% { opacity: 0; }
 }
-
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
-
 @keyframes shimmer {
   0% { background-position: -200% 0; }
   100% { background-position: 200% 0; }
 }
 
 /* ========== Base ========== */
-
 @layer base {
   * {
     box-sizing: border-box;
@@ -105,32 +84,19 @@
   }
 
   body {
-    font-family: 'Inter', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
     background: var(--canvas);
-    color: var(--ink);
+    color: var(--body);
     transition: background 0.3s, color 0.3s;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
     overflow: hidden;
   }
 
-  /* 主题切换过渡 */
-  .card, .card-sm, .btn-primary, .btn-secondary, .btn-ghost,
-  .nav-item, .input, .textarea, .tool-card, .overview-card, .chart-card,
-  .badge, .timeline-pill, .msg-action-btn, .code-block, .prose {
-    transition: background 0.3s, color 0.3s, border-color 0.3s;
-  }
+  /* macOS drag region */
+  .titlebar-drag { -webkit-app-region: drag; }
+  .no-drag { -webkit-app-region: no-drag; }
 
-  /* macOS drag region for title bar */
-  .titlebar-drag {
-    -webkit-app-region: drag;
-  }
-  .no-drag {
-    -webkit-app-region: no-drag;
-  }
-
-  /* 滚动条 */
+  /* Scrollbar */
   ::-webkit-scrollbar { width: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: var(--hairline-strong); border-radius: 3px; }
@@ -142,30 +108,37 @@
   }
 }
 
-/* ========== 组件 ========== */
-
+/* ========== Components ========== */
 @layer components {
-  /* ========== 卡片 ========== */
+  /* --- Cards --- */
   .card {
     background: var(--surface);
     border: 1px solid var(--hairline);
     border-radius: 12px;
     padding: 24px;
+    box-shadow: none !important;
   }
   .card-sm {
     background: var(--surface);
     border: 1px solid var(--hairline);
     border-radius: 12px;
     padding: 16px 20px;
+    box-shadow: none !important;
+  }
+  .ide-pane {
+    background: var(--canvas-soft);
+    border-radius: 8px;
+    padding: 16px;
+    border: 1px solid var(--hairline);
   }
 
-  /* ========== 按钮 ========== */
+  /* --- Buttons --- */
   .btn-primary {
     background: var(--primary);
     color: var(--on-primary);
     font-size: 14px;
     font-weight: 500;
-    line-height: 1.25;
+    line-height: 1.0;
     padding: 10px 18px;
     height: 40px;
     border-radius: 8px;
@@ -174,7 +147,6 @@
     transition: background 0.15s;
   }
   .btn-primary:hover { background: var(--primary-active); }
-  .btn-primary:active { filter: brightness(0.85); }
   .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
 
   .btn-secondary {
@@ -194,7 +166,7 @@
   .btn-ghost {
     background: transparent;
     color: var(--body);
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 500;
     padding: 8px 12px;
     border-radius: 8px;
@@ -203,7 +175,7 @@
   }
   .btn-ghost:hover { background: var(--hairline); color: var(--ink); }
 
-  /* ========== 表单输入 ========== */
+  /* --- Inputs --- */
   .input {
     background: var(--surface);
     color: var(--ink);
@@ -231,7 +203,7 @@
   }
   .textarea:focus { border-color: var(--hairline-strong); }
 
-  /* ========== 导航项 ========== */
+  /* --- Navigation --- */
   .nav-item {
     display: flex;
     align-items: center;
@@ -249,9 +221,13 @@
     text-align: left;
   }
   .nav-item:hover { background: var(--hairline); color: var(--ink); }
-  .nav-item.active { background: color-mix(in srgb, var(--primary) 8%, var(--hairline)); color: var(--primary); font-weight: 600; }
+  .nav-item.active {
+    background: color-mix(in srgb, var(--primary) 8%, var(--hairline));
+    color: var(--primary);
+    font-weight: 600;
+  }
 
-  /* ========== 时间线胶囊 ========== */
+  /* --- Timeline & Badges --- */
   .timeline-pill {
     font-size: 11px;
     font-weight: 600;
@@ -266,9 +242,8 @@
   .pill-edit { background: var(--timeline-edit); color: var(--ink); }
   .pill-done { background: var(--timeline-done); color: var(--on-primary); }
 
-  /* ========== 徽章 ========== */
-  .badge {
-    background: var(--hairline);
+  .badge, .badge-pill {
+    background: var(--surface-strong);
     color: var(--ink);
     font-size: 11px;
     font-weight: 600;
@@ -278,30 +253,28 @@
     border-radius: 9999px;
   }
 
-  /* ========== 分割线 ========== */
+  /* --- Dividers --- */
   .hairline { border-bottom: 1px solid var(--hairline); }
   .hairline-soft { border-bottom: 1px solid var(--hairline-soft); }
 
-  /* ========== 代码块 ========== */
+  /* --- Code Block --- */
   .code-block {
     background: var(--surface);
     color: var(--ink);
-    font-family: 'JetBrains Mono', monospace;
+    font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
     font-size: 13px;
     line-height: 1.5;
     border: 1px solid var(--hairline);
     border-radius: 12px;
     padding: 20px;
   }
-
-  /* Code block font override */
   code, pre, .font-mono {
-    font-family: 'JetBrains Mono', 'Cascadia Code', 'Consolas', monospace !important;
+    font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace !important;
   }
 
-  /* ========== Markdown prose styles for chat ========== */
-  .prose { color: var(--ink); }
-  .prose h1, .prose h2, .prose h3 {
+  /* --- Markdown Prose --- */
+  .prose { color: var(--ink); word-break: break-word; overflow-wrap: anywhere; }
+  .prose h1, .prose h2, .prose h3, .prose h4 {
     color: var(--ink);
     font-weight: 500;
     margin-top: 1em;
@@ -309,11 +282,20 @@
   }
   .prose h1 { font-size: 1.15em; }
   .prose h2 { font-size: 1.05em; }
-  .prose h3 { font-size: 1em; }
+  .prose h3, .prose h4 { font-size: 1em; }
   .prose p { margin-bottom: 0.6em; line-height: 1.7; }
   .prose ul, .prose ol { padding-left: 1.2em; margin-bottom: 0.6em; }
   .prose li { margin-bottom: 0.25em; line-height: 1.6; }
+  .prose li > p { margin-bottom: 0.25em; }
   .prose strong { color: var(--primary); font-weight: 600; }
+  .prose em { font-style: italic; }
+  .prose a { color: var(--primary); text-decoration: underline; text-underline-offset: 2px; }
+  .prose a:hover { opacity: 0.8; }
+  .prose hr { border: none; border-top: 1px solid var(--hairline); margin: 1em 0; }
+  .prose table { width: 100%; border-collapse: collapse; margin-bottom: 0.8em; font-size: 0.9em; }
+  .prose th, .prose td { border: 1px solid var(--hairline); padding: 6px 10px; text-align: left; }
+  .prose th { background: var(--canvas-soft); font-weight: 500; color: var(--ink); }
+  .prose td { color: var(--ink); }
   .prose code {
     background: var(--canvas);
     padding: 0.15em 0.4em;
@@ -336,7 +318,7 @@
     opacity: 0.8;
   }
 
-  /* ========== 工具卡片 ========== */
+  /* --- Tool Card (ChatView timeline) --- */
   .tool-card {
     border: 1px solid var(--hairline);
     border-radius: 12px;
@@ -352,15 +334,24 @@
     transition: background 0.15s;
   }
   .tool-card-header:hover { background: var(--canvas-soft); }
-  .tool-card-header .tool-icon.running { background: color-mix(in srgb, var(--timeline-thinking) 12%, transparent); color: var(--timeline-thinking); }
-  .tool-card-header .tool-icon.success { background: color-mix(in srgb, var(--timeline-done) 12%, transparent); color: var(--timeline-done); }
-  .tool-card-header .tool-icon.error { background: color-mix(in srgb, var(--semantic-error) 12%, transparent); color: var(--semantic-error); }
+  .tool-card-header .tool-icon.running {
+    background: color-mix(in srgb, var(--timeline-thinking) 12%, transparent);
+    color: var(--timeline-thinking);
+  }
+  .tool-card-header .tool-icon.success {
+    background: color-mix(in srgb, var(--timeline-done) 12%, transparent);
+    color: var(--timeline-done);
+  }
+  .tool-card-header .tool-icon.error {
+    background: color-mix(in srgb, var(--semantic-error) 12%, transparent);
+    color: var(--semantic-error);
+  }
   .tool-card-body {
     padding: 0 16px 12px;
     border-top: 1px solid var(--hairline);
   }
 
-  /* ========== 消息操作栏 ========== */
+  /* --- Message Actions --- */
   .msg-actions {
     display: flex;
     align-items: center;
@@ -381,7 +372,7 @@
   }
   .msg-action-btn:hover { background: var(--hairline); color: var(--ink); }
 
-  /* ========== 数据分析卡片 ========== */
+  /* --- Data View Cards --- */
   .overview-card {
     background: var(--surface);
     border: 1px solid var(--hairline);
@@ -398,7 +389,7 @@
     padding: 20px;
   }
 
-  /* ========== 动画 ========== */
+  /* --- Animations --- */
   .animate-fade-in { animation: fade-in 0.2s ease-out forwards; }
   .animate-spin { animation: spin 1s linear infinite; }
   .animate-msg-enter { animation: fade-in 0.2s ease-out forwards; }
@@ -412,7 +403,7 @@
     font-weight: 400;
   }
 
-  /* 骨架屏 */
+  /* --- Skeleton --- */
   .skeleton {
     background: linear-gradient(90deg, var(--hairline) 25%, var(--hairline-strong) 50%, var(--hairline) 75%);
     background-size: 200% 100%;
@@ -421,24 +412,21 @@
   }
 }
 
-/* 按钮交互状态 */
+/* ========== Global States ========== */
 button:active:not(:disabled) {
   transform: scale(0.96);
   transition: transform 0.1s ease-out;
 }
-
 button:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
 
-/* 焦点可见性 — 键盘导航 */
 *:focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
   border-radius: 4px;
 }
-
 .input:focus-visible,
 .textarea:focus-visible,
 select:focus-visible {

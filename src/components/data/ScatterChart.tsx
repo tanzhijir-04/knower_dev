@@ -1,8 +1,11 @@
+import { useState, useEffect } from 'react'
 import ReactECharts from 'echarts-for-react'
 import { getChartTheme } from '../../lib/chartTheme'
 import type { CrawlContent } from '../../types/electron'
 
 export default function ScatterChart({ data }: { data: CrawlContent[] }) {
+  const [ready, setReady] = useState(false)
+  useEffect(() => { const t = setTimeout(() => setReady(true), 50); return () => clearTimeout(t) }, [])
   const theme = getChartTheme()
   const option = {
     ...theme,
@@ -20,5 +23,6 @@ export default function ScatterChart({ data }: { data: CrawlContent[] }) {
       itemStyle: { opacity: 0.7 },
     }],
   }
+  if (!ready) return <div style={{ height: 300 }} />
   return <ReactECharts option={option} style={{ height: 300 }} />
 }

@@ -8,10 +8,11 @@ class AnthropicClient {
     this.model = config.model
   }
 
-  async chat({ system, messages, tools, maxTokens = 8096 }) {
+  async chat({ system, messages, tools, maxTokens = 8096, temperature = 0.7 }) {
     const params = {
       model: this.model,
       max_tokens: maxTokens,
+      temperature,
       messages,
     }
     if (system) params.system = system
@@ -31,10 +32,11 @@ class AnthropicClient {
     }
   }
 
-  async *stream({ system, messages, tools, maxTokens = 8096, signal }) {
+  async *stream({ system, messages, tools, maxTokens = 8096, temperature = 0.7, signal }) {
     const params = {
       model: this.model,
       max_tokens: maxTokens,
+      temperature,
       messages,
     }
     if (system) params.system = system

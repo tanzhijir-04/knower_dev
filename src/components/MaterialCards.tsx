@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { PlayCircle, Screencast, Palette, Hash, ListChecks, ChartBar, Check, Copy, StackSimple } from '@phosphor-icons/react'
+import type { ComponentType } from 'react'
 import { useToast } from '../contexts/ToastContext'
 
 interface PlatformMaterial {
@@ -32,13 +34,13 @@ interface Props {
   onOpenCanvas?: () => void
 }
 
-const PLATFORMS = [
-  { key: 'bilibili', label: 'B站', icon: 'play_circle', color: '#00a1d6' },
-  { key: 'youtube', label: 'YouTube', icon: 'smart_display', color: '#ff0000' },
-  { key: 'douyin', label: '抖音', icon: 'music_note', color: '#fe2c55' },
-  { key: 'xiaohongshu', label: '小红书', icon: 'style', color: '#ff2442' },
-  { key: 'checklist', label: '拍摄清单', icon: 'checklist', color: '#6bfb9a' },
-] as const
+const PLATFORMS: { key: string; label: string; icon: ComponentType<{ className?: string }>; color: string }[] = [
+  { key: 'bilibili', label: 'B站', icon: PlayCircle, color: '#00a1d6' },
+  { key: 'youtube', label: 'YouTube', icon: Screencast, color: '#ff0000' },
+  { key: 'douyin', label: '抖音', icon: Palette, color: '#fe2c55' },
+  { key: 'xiaohongshu', label: '小红书', icon: Hash, color: '#ff2442' },
+  { key: 'checklist', label: '拍摄清单', icon: ListChecks, color: '#6bfb9a' },
+]
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false)
@@ -57,9 +59,7 @@ function CopyButton({ text }: { text: string }) {
       className="text-muted hover:text-ink transition-colors"
       title="复制"
     >
-      <span className="material-symbols-outlined text-[16px]">
-        {copied ? 'check' : 'content_copy'}
-      </span>
+      {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
     </button>
   )
 }
@@ -69,7 +69,7 @@ function AnalysisCard({ analysis }: { analysis: MaterialData['analysis'] }) {
   return (
     <div className="card-sm mb-3">
       <div className="flex items-center gap-2 mb-3">
-        <span className="material-symbols-outlined text-primary text-[18px]">analytics</span>
+        <ChartBar className="w-5 h-5 text-primary" />
         <span className="text-sm font-medium text-ink">脚本分析</span>
       </div>
       <div className="grid grid-cols-2 gap-3 text-sm">
@@ -214,12 +214,12 @@ export default function MaterialCards({ data, onOpenCanvas }: Props) {
   if (!data.result && !data.analysis) return null
 
   return (
-    <div className="mt-3 rounded-xl border border-outline-variant/30 overflow-hidden">
+    <div className="mt-3 rounded-xl border border-hairline/30 overflow-hidden overflow-x-hidden">
       {/* 分析卡片 */}
       {data.analysis && <div className="px-3 pt-3"><AnalysisCard analysis={data.analysis} /></div>}
 
       {/* Tab 栏 */}
-      <div className="flex border-b border-outline-variant/30 px-2 overflow-x-auto">
+      <div className="flex border-b border-hairline/30 px-2 overflow-x-auto">
         {PLATFORMS.map((p) => (
           <button
             key={p.key}
@@ -230,7 +230,7 @@ export default function MaterialCards({ data, onOpenCanvas }: Props) {
                 : 'border-transparent text-muted hover:text-ink'
             }`}
           >
-            <span className="material-symbols-outlined text-[16px]">{p.icon}</span>
+            <p.icon className="w-4 h-4" />
             {p.label}
           </button>
         ))}
@@ -240,7 +240,7 @@ export default function MaterialCards({ data, onOpenCanvas }: Props) {
             className="ml-auto flex items-center gap-1 px-2.5 py-1.5 text-xs text-muted hover:text-ink hover:bg-hairline rounded-lg transition-colors shrink-0"
             title="在面板查看"
           >
-            <span className="material-symbols-outlined text-[14px]">dashboard</span>
+            <StackSimple className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">面板</span>
           </button>
         )}

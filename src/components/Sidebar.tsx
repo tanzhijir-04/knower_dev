@@ -1,4 +1,7 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import gsap from 'gsap'
+import { Chats, ChartBar, SquaresFour, GearSix, PencilSimple, PushPin, Download, Trash, MagnifyingGlass, Sun, Moon, Desktop, CaretLeft, DotsThree } from '@phosphor-icons/react'
+import type { ComponentType } from 'react'
 import type { Page } from '../App'
 import type { Message } from '../types/electron'
 import logoSvg from '../../assets/logo-sidebar.svg?url'
@@ -10,11 +13,11 @@ interface SidebarProps {
   conversationVersion?: number
 }
 
-const navItems: { id: Page; icon: string; label: string }[] = [
-  { id: 'chat', icon: 'chat_bubble', label: '创作台' },
-  { id: 'data', icon: 'analytics', label: '数据分析' },
-  { id: 'topics', icon: 'grid_view', label: '灵感库' },
-  { id: 'settings', icon: 'settings', label: '设置' },
+const navItems: { id: Page; icon: ComponentType<{ className?: string }>; label: string }[] = [
+  { id: 'chat', icon: Chats, label: '创作台' },
+  { id: 'data', icon: ChartBar, label: '数据分析' },
+  { id: 'topics', icon: SquaresFour, label: '灵感库' },
+  { id: 'settings', icon: GearSix, label: '设置' },
 ]
 
 interface Conversation {
@@ -34,6 +37,13 @@ function ContextMenu({ x, y, onClose, onRename, onPin, onExport, onDelete, isPin
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
+    // GSAP entrance animation
+    if (ref.current) {
+      gsap.fromTo(ref.current,
+        { opacity: 0, scale: 0.92, y: -4 },
+        { opacity: 1, scale: 1, y: 0, duration: 0.18, ease: 'back.out(2)', clearProps: 'transform' }
+      )
+    }
     const close = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) onClose()
     }
@@ -45,10 +55,10 @@ function ContextMenu({ x, y, onClose, onRename, onPin, onExport, onDelete, isPin
   }, [onClose])
 
   const items = [
-    { icon: 'edit', label: '重命名', onClick: onRename },
-    { icon: 'push_pin', label: isPinned ? '取消置顶' : '置顶到顶部', onClick: onPin },
-    { icon: 'download', label: '导出对话记录', onClick: onExport },
-    { icon: 'delete', label: '删除', onClick: onDelete, danger: true },
+    { Icon: PencilSimple, label: '重命名', onClick: onRename },
+    { Icon: PushPin, label: isPinned ? '取消置顶' : '置顶到顶部', onClick: onPin },
+    { Icon: Download, label: '导出对话记录', onClick: onExport },
+    { Icon: Trash, label: '删除', onClick: onDelete, danger: true },
   ]
 
   return (
@@ -67,7 +77,7 @@ function ContextMenu({ x, y, onClose, onRename, onPin, onExport, onDelete, isPin
               item.danger ? 'text-semantic-error hover:bg-semantic-error/10' : 'text-ink hover:bg-canvas'
             }`}
           >
-            <span className="material-symbols-outlined text-[14px]">{item.icon}</span>
+            <item.Icon className="w-3.5 h-3.5" />
             {item.label}
           </button>
         </div>
@@ -109,7 +119,7 @@ function ConversationItem({
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      <span className="material-symbols-outlined text-[14px] text-muted shrink-0">chat_bubble</span>
+      <Chats className="w-3.5 h-3.5 text-muted shrink-0" />
 
       {isEditing ? (
         <input
@@ -131,19 +141,19 @@ function ConversationItem({
       {hovered && !isEditing && (
         <div className="flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
           <button onClick={onTogglePin} className="p-1 rounded text-muted hover:text-ink hover:bg-hairline-strong transition-colors" title={conv.isPinned ? '取消置顶' : '置顶'}>
-            <span className={`material-symbols-outlined text-[12px] ${conv.isPinned ? 'text-primary' : ''}`}>push_pin</span>
+            <PushPin className={`w-3 h-3 ${conv.isPinned ? 'text-primary' : ''}`} />
           </button>
           <button onClick={onEdit} className="p-1 rounded text-muted hover:text-ink hover:bg-hairline-strong transition-colors" title="重命名">
-            <span className="material-symbols-outlined text-[12px]">edit</span>
+            <PencilSimple className="w-3 h-3" />
           </button>
           <button onClick={(e) => onContextMenu(e)} className="p-1 rounded text-muted hover:text-ink hover:bg-hairline-strong transition-colors" title="更多">
-            <span className="material-symbols-outlined text-[12px]">more_horiz</span>
+            <DotsThree className="w-3 h-3" />
           </button>
         </div>
       )}
 
       {!hovered && conv.isPinned === 1 && !isEditing && (
-        <span className="material-symbols-outlined text-[10px] text-primary shrink-0">push_pin</span>
+        <PushPin className="w-2.5 h-2.5 text-primary shrink-0" />
       )}
     </div>
   )
@@ -161,6 +171,37 @@ export default function Sidebar({ currentPage, onNavigate, onOpenConversation, c
   const [activeConversationId, setActiveConversationId] = useState<number | null>(null)
   const [theme, setTheme] = useState<'dark' | 'light' | 'system'>('light')
   const width = collapsed ? 56 : 240
+  const logoTextRef = useRef<HTMLSpanElement>(null)
+  const navLabelRefs = useRef<(HTMLSpanElement | null)[]>([])
+  const convoSectionRef = useRef<HTMLDivElement>(null)
+  const contextMenuRef = useRef<HTMLDivElement>(null)
+
+  // GSAP staggered collapse/expand animation
+  useEffect(() => {
+    const targets = [logoTextRef.current, ...navLabelRefs.current].filter(Boolean) as HTMLElement[]
+    if (!targets.length) return
+
+    gsap.to(targets, {
+      opacity: collapsed ? 0 : 1,
+      width: collapsed ? 0 : 'auto',
+      duration: 0.25,
+      ease: 'power2.inOut',
+      stagger: collapsed ? 0.02 : 0.03,
+      overflow: 'hidden',
+    })
+
+    // Conversation section
+    if (convoSectionRef.current) {
+      gsap.to(convoSectionRef.current, {
+        opacity: collapsed ? 0 : 1,
+        width: collapsed ? 0 : 'auto',
+        duration: 0.2,
+        ease: 'power2.inOut',
+        overflow: 'hidden',
+        pointerEvents: collapsed ? 'none' : 'auto',
+      })
+    }
+  }, [collapsed])
 
   const handleThemeChange = (newTheme: 'dark' | 'light' | 'system') => {
     setTheme(newTheme)
@@ -271,14 +312,14 @@ export default function Sidebar({ currentPage, onNavigate, onOpenConversation, c
 
   return (
     <aside
-      className="h-full border-r border-hairline flex flex-col shrink-0 transition-all duration-300 bg-canvas-soft"
+      className={`h-full border-r border-hairline flex flex-col shrink-0 transition-all duration-300 bg-canvas-soft ${collapsed ? 'sidebar-collapsed' : ''}`}
       style={{ width }}
     >
       {/* Logo + window controls */}
-      <div className="titlebar-drag flex items-center justify-between px-5 h-12 border-b border-hairline">
-        <div className="flex items-center gap-3 no-drag">
+      <div className={`titlebar-drag flex items-center justify-between h-12 border-b border-hairline ${collapsed ? 'px-2 justify-center' : 'px-5'}`}>
+        <div className={`flex items-center no-drag ${collapsed ? 'gap-0' : 'gap-3'}`}>
           <img src={logoSvg} alt="知更" className="w-8 h-8 rounded-lg shrink-0" />
-          <span className={`text-ink whitespace-nowrap overflow-hidden transition-all duration-200 ${collapsed ? 'w-0 opacity-0' : 'w-auto opacity-100 delay-150'}`}
+          <span ref={logoTextRef} className="text-ink whitespace-nowrap overflow-hidden"
             style={{ fontSize: 18, fontWeight: 400, letterSpacing: '-0.11px' }}>
             知更 Knower
           </span>
@@ -287,15 +328,15 @@ export default function Sidebar({ currentPage, onNavigate, onOpenConversation, c
       </div>
 
       {/* Navigation */}
-      <nav className="flex flex-col gap-0.5 px-3 pt-4">
-        {navItems.map((item) => (
+      <nav className={`flex flex-col gap-0.5 pt-4 overflow-hidden ${collapsed ? 'px-2' : 'px-3'}`}>
+        {navItems.map((item, idx) => (
           <button
             key={item.id}
             onClick={() => onNavigate(item.id)}
             className={`nav-item ${currentPage === item.id ? 'active' : ''}`}
           >
-            <span className="material-symbols-outlined text-[20px] shrink-0">{item.icon}</span>
-            <span className={`whitespace-nowrap overflow-hidden transition-all duration-200 ${collapsed ? 'w-0 opacity-0' : 'w-auto opacity-100 delay-100'}`}>
+            <item.icon className="w-5 h-5 shrink-0" />
+            <span ref={el => { navLabelRefs.current[idx] = el }} className="whitespace-nowrap overflow-hidden">
               {item.label}
             </span>
           </button>
@@ -304,16 +345,16 @@ export default function Sidebar({ currentPage, onNavigate, onOpenConversation, c
 
       {/* Conversation history (chat page only) */}
       {currentPage === 'chat' && (
-        <div className={`flex-1 flex flex-col mt-4 overflow-hidden transition-all duration-200 ${collapsed ? 'w-0 opacity-0 pointer-events-none' : 'w-auto opacity-100 delay-100'}`}>
+        <div ref={convoSectionRef} className="flex-1 flex flex-col mt-4 overflow-hidden">
           {/* Search box */}
           <div className="px-3 mb-3">
             <div className="relative">
-              <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-[14px] text-muted">search</span>
+              <MagnifyingGlass className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
               <input
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="搜索对话..."
-                className="w-full bg-surface border border-hairline rounded-lg pl-8 pr-3 py-2 text-[13px] text-ink placeholder:text-muted-soft outline-none transition-colors"
+                className="w-full bg-surface border border-hairline rounded-lg pl-8 pr-3 py-2 text-[13px] text-ink placeholder:text-muted-soft outline-none focus-visible:outline-none focus-visible:border-hairline-strong transition-colors"
                 style={{ height: 36 }}
               />
             </div>
@@ -327,7 +368,7 @@ export default function Sidebar({ currentPage, onNavigate, onOpenConversation, c
             {pinned.length > 0 && (
               <div className="mb-2">
                 <div className="px-3 mb-1 flex items-center gap-1">
-                  <span className="material-symbols-outlined text-[12px] text-muted">push_pin</span>
+                  <PushPin className="w-3 h-3 text-muted" />
                   <span className="text-[10px] text-muted">置顶</span>
                 </div>
                 {pinned.map(conv => renderConversationItem(conv))}
@@ -350,14 +391,14 @@ export default function Sidebar({ currentPage, onNavigate, onOpenConversation, c
       )}
 
       {/* Bottom bar: theme toggle + collapse */}
-      <div className="px-3 py-3 border-t border-hairline space-y-2">
+      <div className={`py-3 border-t border-hairline space-y-2 ${collapsed ? 'px-2' : 'px-3'}`}>
         {/* Theme toggle — expanded */}
         {!collapsed && (
           <div className="flex items-center justify-center gap-1">
             {([
-              { mode: 'light' as const, icon: 'light_mode', tip: '浅色模式' },
-              { mode: 'dark' as const, icon: 'dark_mode', tip: '深色模式' },
-              { mode: 'system' as const, icon: 'computer', tip: '跟随系统' },
+              { mode: 'light' as const, Icon: Sun, tip: '浅色模式' },
+              { mode: 'dark' as const, Icon: Moon, tip: '深色模式' },
+              { mode: 'system' as const, Icon: Desktop, tip: '跟随系统' },
             ]).map(t => (
               <button
                 key={t.mode}
@@ -367,7 +408,7 @@ export default function Sidebar({ currentPage, onNavigate, onOpenConversation, c
                 }`}
                 title={t.tip}
               >
-                <span className="material-symbols-outlined text-[16px]">{t.icon}</span>
+                <t.Icon className="w-4 h-4" />
               </button>
             ))}
           </div>
@@ -381,9 +422,7 @@ export default function Sidebar({ currentPage, onNavigate, onOpenConversation, c
               className="w-8 h-8 rounded-full flex items-center justify-center text-muted hover:text-ink hover:bg-hairline transition-colors"
               title={theme === 'dark' ? '切换到浅色' : theme === 'light' ? '切换到跟随系统' : '切换到深色'}
             >
-              <span className="material-symbols-outlined text-[16px]">
-                {theme === 'dark' ? 'light_mode' : theme === 'light' ? 'computer' : 'dark_mode'}
-              </span>
+              {theme === 'dark' ? <Sun className="w-4 h-4" /> : theme === 'light' ? <Desktop className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </button>
           </div>
         )}
@@ -393,9 +432,7 @@ export default function Sidebar({ currentPage, onNavigate, onOpenConversation, c
           onClick={() => setCollapsed(!collapsed)}
           className="nav-item justify-center"
         >
-          <span className={`material-symbols-outlined text-[18px] transition-transform ${collapsed ? 'rotate-180' : ''}`}>
-            chevron_left
-          </span>
+          <CaretLeft className={`w-4.5 h-4.5 transition-transform ${collapsed ? 'rotate-180' : ''}`} />
         </button>
       </div>
 

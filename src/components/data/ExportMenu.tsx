@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { CrawlContent, VideoAnalysis } from '../../types/electron'
+import { Download, Table, FileText, File } from '@phosphor-icons/react'
 
 function formatNumber(n: number) {
   if (n >= 10000) return (n / 10000).toFixed(1) + '万'
@@ -77,28 +78,28 @@ export default function ExportMenu({ videos, overview, analysis, sourceName }: P
     <div className="relative">
       <button
         onClick={() => setOpen(!open)}
-        className="px-3 py-1.5 bg-surface-container border border-outline-variant text-on-surface text-xs rounded-lg hover:bg-surface-high transition-colors flex items-center gap-1"
+        className="px-3 py-1.5 bg-canvas-soft border border-hairline text-ink text-xs rounded-lg hover:bg-surface-strong transition-colors flex items-center gap-1"
       >
-        <span className="material-symbols-outlined text-[14px]">download</span>
+        <Download className="w-4 h-4" />
         导出
       </button>
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-full mt-1 bg-surface-low border border-outline-variant rounded-xl shadow-xl py-1 min-w-[160px] z-50">
+          <div className="absolute right-0 top-full mt-1 bg-surface-low border border-hairline rounded-xl shadow-xl py-1 min-w-[160px] z-50">
             <button onClick={() => { downloadFile(generateCSV(videos), `${prefix}_${ts}.csv`, 'text/csv;charset=utf-8'); setOpen(false) }}
-              className="w-full px-3 py-2 text-left text-xs text-on-surface hover:bg-surface-container flex items-center gap-2">
-              <span className="material-symbols-outlined text-[14px] text-on-surface-variant">table_chart</span>
+              className="w-full px-3 py-2 text-left text-xs text-ink hover:bg-canvas-soft flex items-center gap-2">
+              <Table className="w-4 h-4 text-body" />
               导出为 CSV
             </button>
             <button onClick={() => { downloadFile(generateMarkdown(videos, overview, analysis), `${prefix}_${ts}.md`, 'text/markdown;charset=utf-8'); setOpen(false) }}
-              className="w-full px-3 py-2 text-left text-xs text-on-surface hover:bg-surface-container flex items-center gap-2">
-              <span className="material-symbols-outlined text-[14px] text-on-surface-variant">description</span>
+              className="w-full px-3 py-2 text-left text-xs text-ink hover:bg-canvas-soft flex items-center gap-2">
+              <FileText className="w-4 h-4 text-body" />
               导出为 Markdown
             </button>
             <button onClick={() => { downloadFile(generateTXT(videos, overview), `${prefix}_${ts}.txt`, 'text/plain;charset=utf-8'); setOpen(false) }}
-              className="w-full px-3 py-2 text-left text-xs text-on-surface hover:bg-surface-container flex items-center gap-2">
-              <span className="material-symbols-outlined text-[14px] text-on-surface-variant">text_snippet</span>
+              className="w-full px-3 py-2 text-left text-xs text-ink hover:bg-canvas-soft flex items-center gap-2">
+              <File className="w-4 h-4 text-body" />
               导出为 TXT
             </button>
           </div>

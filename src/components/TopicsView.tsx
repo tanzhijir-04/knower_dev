@@ -3,6 +3,7 @@ import { usePlatform } from '../contexts/PlatformContext'
 import TrendPanel from './topics/TrendPanel'
 import TopicCard from './topics/TopicCard'
 import TopicDetail from './topics/TopicDetail'
+import { PlayCircle, Palette, Hash, Tag, BookmarkSimple, Sparkle, Lightbulb } from '@phosphor-icons/react'
 import type { TopicSuggestion, TrendData, SavedTopic } from '../types/electron'
 
 interface Props {
@@ -10,10 +11,10 @@ interface Props {
 }
 
 const PLATFORMS = [
-  { key: 'bili', label: 'B站', icon: 'play_circle' },
-  { key: 'dy', label: '抖音', icon: 'music_note' },
-  { key: 'xhs', label: '小红书', icon: 'style' },
-  { key: 'wb', label: '微博', icon: 'tag' },
+  { key: 'bili', label: 'B站', Icon: PlayCircle },
+  { key: 'dy', label: '抖音', Icon: Palette },
+  { key: 'xhs', label: '小红书', Icon: Sparkle },
+  { key: 'wb', label: '微博', Icon: Tag },
 ] as const
 
 export default function TopicsView({ onSendToChat }: Props) {
@@ -127,7 +128,7 @@ export default function TopicsView({ onSendToChat }: Props) {
             showSaved ? 'bg-primary/15 text-primary' : 'text-muted hover:text-ink hover:bg-canvas-soft'
           }`}
         >
-          <span className="material-symbols-outlined text-[14px] align-middle mr-1">bookmark</span>
+          <BookmarkSimple className="w-4 h-4 align-middle mr-1" weight="fill" />
           收藏 ({savedTopics.length})
         </button>
         <button
@@ -142,7 +143,7 @@ export default function TopicsView({ onSendToChat }: Props) {
             </>
           ) : (
             <>
-              <span className="material-symbols-outlined text-[14px]">auto_awesome</span>
+              <Sparkle className="w-4 h-4" weight="fill" />
               AI 生成选题
             </>
           )}
@@ -165,7 +166,7 @@ export default function TopicsView({ onSendToChat }: Props) {
           <div className="flex-1 overflow-y-auto p-4">
             {displayTopics.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-center">
-                <span className="material-symbols-outlined text-[36px] text-muted mb-3">lightbulb</span>
+                <Lightbulb className="w-9 h-9 text-muted mb-3" weight="fill" />
                 <p className="text-sm text-muted mb-1">
                   {showSaved ? '暂无收藏的选题' : '暂无选题建议'}
                 </p>

@@ -6,6 +6,9 @@ import type { Message, Conversation } from '../types/electron'
 import type { Page } from '../App'
 import { useToast } from '../contexts/ToastContext'
 import { usePlatform } from '../contexts/PlatformContext'
+import { animateMessage, modalEnter, modalExit, menuEnter, timelinePillEnter, gsap } from '../lib/gsap'
+import { Info, FileText, X, StopCircle, ArrowUp, ArrowDown, Plus, UploadSimple, Lightning, ListChecks, Exam, Sparkle, Lightbulb, PencilSimple, ThumbsUp, ThumbsDown, Check, Copy, Export, ArrowsClockwise, StackSimple, MagicWand, ChartBar, Download, GearSix, MagnifyingGlass, Paperclip } from '@phosphor-icons/react'
+import type { ComponentType } from 'react'
 import logoSvg from '../../assets/logo-sidebar.svg?url'
 
 async function readFileAsText(file: File): Promise<string> {
@@ -28,13 +31,13 @@ interface Props {
 
 // ---- Quick Action Button ----
 
-function QuickAction({ icon, label, onClick }: { icon: string; label: string; onClick: () => void }) {
+function QuickAction({ Icon, label, onClick }: { Icon: ComponentType<{ className?: string }>; label: string; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
       className="btn-ghost flex items-center gap-1.5 text-[12px] shrink-0"
     >
-      <span className="material-symbols-outlined text-[14px]">{icon}</span>
+      <Icon className="w-3.5 h-3.5" />
       {label}
     </button>
   )
@@ -43,19 +46,24 @@ function QuickAction({ icon, label, onClick }: { icon: string; label: string; on
 // ---- More Actions Menu ----
 
 function MoreActionsMenu({ onClose, onAction }: { onClose: () => void; onAction: (action: string) => void }) {
+  const ref = useRef<HTMLDivElement>(null)
   const actions = [
-    { icon: 'checklist', label: '拍摄清单', value: '拍摄清单' },
-    { icon: 'title', label: '标题优化', value: '标题优化' },
-    { icon: 'compare', label: '竞品分析', value: '竞品分析' },
-    { icon: 'tips_and_updates', label: '创作灵感', value: '创作灵感' },
+    { Icon: ListChecks, label: '拍摄清单', value: '拍摄清单' },
+    { Icon: Exam, label: '标题优化', value: '标题优化' },
+    { Icon: MagnifyingGlass, label: '竞品分析', value: '竞品分析' },
+    { Icon: MagicWand, label: '创作灵感', value: '创作灵感' },
   ]
 
+  useEffect(() => {
+    if (ref.current) menuEnter(ref.current)
+  }, [])
+
   return (
-    <div className="absolute bottom-full right-0 mb-2 bg-surface border border-hairline rounded-xl py-1 min-w-[160px] z-20">
+    <div ref={ref} className="absolute bottom-full right-0 mb-2 bg-surface border border-hairline rounded-xl py-1 min-w-[160px] z-20">
       {actions.map(a => (
         <button key={a.value} onClick={() => { onAction(a.value); onClose() }}
           className="w-full px-3 py-2 text-left text-xs text-ink hover:bg-canvas flex items-center gap-2 transition-colors">
-          <span className="material-symbols-outlined text-[14px] text-muted">{a.icon}</span>
+          <a.Icon className="w-3.5 h-3.5 text-muted" />
           {a.label}
         </button>
       ))}
@@ -72,16 +80,33 @@ function IntentFormModal({ message, fields, onSubmit, onClose }: {
   onClose: () => void
 }) {
   const [formData, setFormData] = useState<Record<string, string>>({})
+  const overlayRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (overlayRef.current && contentRef.current) {
+      modalEnter(overlayRef.current, contentRef.current)
+    }
+  }, [])
+
+  const handleClose = () => {
+    if (overlayRef.current && contentRef.current) {
+      modalExit(overlayRef.current, contentRef.current, onClose)
+    } else {
+      onClose()
+    }
+  }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onClose}>
+    <div ref={overlayRef} className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={handleClose}>
       <div
-        className="bg-surface border border-hairline rounded-2xl w-[400px] max-w-[90vw] animate-fade-in"
+        ref={contentRef}
+        className="bg-surface border border-hairline rounded-2xl w-[400px] max-w-[90vw]"
         onClick={e => e.stopPropagation()}
       >
         <div className="px-5 pt-5 pb-3">
           <div className="flex items-center gap-2 mb-2">
-            <span className="material-symbols-outlined text-[18px] text-primary">info</span>
+            <Info className="w-4.5 h-4.5 text-primary" />
             <span className="text-sm font-medium text-ink">需要补充信息</span>
           </div>
           <p className="text-xs text-muted">{message}</p>
@@ -94,8 +119,7 @@ function IntentFormModal({ message, fields, onSubmit, onClose }: {
                 <select
                   value={formData[f.name] || ''}
                   onChange={e => setFormData(prev => ({ ...prev, [f.name]: e.target.value }))}
-                  className="input w-full text-xs"
-                  style={{ height: 36, padding: '8px 12px' }}
+                  className="input w-full text-xs h-9 px-3"
                 >
                   <option value="">{f.placeholder || '请选择...'}</option>
                   {f.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
@@ -105,8 +129,7 @@ function IntentFormModal({ message, fields, onSubmit, onClose }: {
                   value={formData[f.name] || ''}
                   onChange={e => setFormData(prev => ({ ...prev, [f.name]: e.target.value }))}
                   placeholder={f.placeholder}
-                  className="input w-full text-xs"
-                  style={{ height: 36, padding: '8px 12px' }}
+                  className="input w-full text-xs h-9 px-3"
                   onKeyDown={e => { if (e.key === 'Enter') onSubmit(formData) }}
                 />
               )}
@@ -114,10 +137,10 @@ function IntentFormModal({ message, fields, onSubmit, onClose }: {
           ))}
         </div>
         <div className="px-5 pb-5 flex gap-2">
-          <button onClick={onClose} className="flex-1 btn-secondary text-xs" style={{ height: 36 }}>
+          <button onClick={handleClose} className="flex-1 btn-secondary text-xs h-9">
             取消
           </button>
-          <button onClick={() => onSubmit(formData)} className="flex-1 btn-primary text-xs" style={{ height: 36 }}>
+          <button onClick={() => onSubmit(formData)} className="flex-1 btn-primary text-xs h-9">
             确认
           </button>
         </div>
@@ -154,8 +177,19 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const assistantIdRef = useRef('')
+  const animatedMsgIdsRef = useRef(new Set<string>())
   const { showToast } = useToast()
   const { isWindows } = usePlatform()
+  const [defaultPlatforms, setDefaultPlatforms] = useState<string[]>(['bilibili', 'douyin', 'xiaohongshu'])
+
+  // Load default platforms from settings
+  useEffect(() => {
+    window.electronAPI?.getStoreAll().then((all) => {
+      if (all?.defaultPlatforms && Array.isArray(all.defaultPlatforms)) {
+        setDefaultPlatforms(all.defaultPlatforms as string[])
+      }
+    })
+  }, [])
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -348,7 +382,7 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
     }
 
     if (api?.runAgent) {
-      await api.runAgent(userContent, ['bilibili', 'youtube', 'douyin', 'xiaohongshu'])
+      await api.runAgent(userContent, defaultPlatforms)
     } else {
       setMessages((prev) => {
         const last = prev[prev.length - 1]
@@ -415,11 +449,13 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
     const msgs = await api.getMessages(conv.id)
     setMessages(msgs)
     setConversationId(conv.id)
+    animatedMsgIdsRef.current.clear()
   }
 
   const handleNewChat = () => {
     setMessages([])
     setConversationId(null)
+    animatedMsgIdsRef.current.clear()
   }
 
   const handleDeleteMessage = async (msgId: string) => {
@@ -431,14 +467,34 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
   }
 
   const handleExportMessage = (msg: Message) => {
-    const text = msg.role === 'assistant' ? msg.content.replace(/<[^>]+>/g, '') : msg.content
-    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
+    const role = msg.role === 'user' ? '用户' : '助手'
+    const content = msg.role === 'assistant' ? msg.content.replace(/<[^>]+>/g, '') : msg.content
+    const md = `# 知更对话 — ${role}\n\n**日期**: ${new Date().toLocaleString('zh-CN')}\n\n---\n\n${content}\n`
+    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `${msg.role === 'user' ? '提问' : '回答'}_${new Date().toISOString().slice(0, 10)}.txt`
+    a.download = `${role}_${new Date().toISOString().slice(0, 10)}.md`
     a.click()
     URL.revokeObjectURL(url)
+  }
+
+  const handleExportAllMessages = () => {
+    if (messages.length === 0) return
+    const lines = messages.map(msg => {
+      const role = msg.role === 'user' ? '用户' : '助手'
+      const content = msg.role === 'assistant' ? msg.content.replace(/<[^>]+>/g, '') : msg.content
+      return `## ${role}\n\n${content}`
+    })
+    const md = `# 知更对话记录\n\n**导出时间**: ${new Date().toLocaleString('zh-CN')}\n**消息数**: ${messages.length}\n\n---\n\n${lines.join('\n\n---\n\n')}\n`
+    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `对话记录_${new Date().toISOString().slice(0, 10)}.md`
+    a.click()
+    URL.revokeObjectURL(url)
+    showToast('已导出对话记录 (.md)', 'success')
   }
 
   const handleFeedback = (msgId: string, type: 'good' | 'bad') => {
@@ -496,7 +552,7 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
 
     const api = window.electronAPI
     if (api?.runAgent) {
-      await api.runAgent(editingContent.trim(), ['bilibili', 'youtube', 'douyin', 'xiaohongshu'])
+      await api.runAgent(editingContent.trim(), defaultPlatforms)
     }
   }
 
@@ -584,15 +640,24 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
       {importedFile && (
         <div className="mb-2 flex items-center gap-2">
           <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full flex items-center gap-1">
-            <span className="material-symbols-outlined text-[14px]">description</span>
+            <FileText className="w-3.5 h-3.5" />
             {importedFile}
             <button onClick={() => setImportedFile(null)} className="hover:text-ink ml-0.5">
-              <span className="material-symbols-outlined text-[12px]">close</span>
+              <X className="w-3 h-3" />
             </button>
           </span>
         </div>
       )}
       <div className="relative">
+        {!isStreaming && (
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="absolute left-2 bottom-2 w-8 h-8 rounded-full flex items-center justify-center text-muted hover:text-ink hover:bg-hairline transition-colors z-10"
+            title="上传文件 (.txt / .md / .docx)"
+          >
+            <Paperclip className="w-4.5 h-4.5" />
+          </button>
+        )}
         <textarea
           ref={textareaRef}
           value={input}
@@ -600,8 +665,7 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
           onKeyDown={handleKeyDown}
           placeholder="输入消息给知更 AI..."
           rows={1}
-          className="textarea w-full pr-12"
-          style={{ minHeight: 44, maxHeight: 120 }}
+          className="textarea w-full pl-10 pr-12 min-h-[44px] max-h-[120px]"
         />
         {isStreaming ? (
           <button
@@ -609,29 +673,32 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
             className="absolute right-2 bottom-2 w-8 h-8 rounded-full bg-semantic-error/15 flex items-center justify-center transition-all hover:bg-semantic-error/25"
             title="停止生成"
           >
-            <span className="material-symbols-outlined text-semantic-error text-[18px]">stop</span>
+            <StopCircle className="w-4.5 h-4.5 text-semantic-error" />
           </button>
         ) : (
           <button
             onClick={() => handleSend()}
             disabled={!input.trim()}
-            className="btn-primary absolute right-2 bottom-2 disabled:opacity-30"
-            style={{ width: 32, height: 32, padding: 0, borderRadius: '50%' }}
+            className={`absolute right-2 bottom-2 w-8 h-8 rounded-full flex items-center justify-center transition-all disabled:opacity-100 ${
+              input.trim()
+                ? 'bg-primary text-on-primary hover:bg-primary-active'
+                : 'bg-surface-strong text-muted cursor-not-allowed'
+            }`}
           >
-            <span className="material-symbols-outlined text-[18px]">arrow_upward</span>
+            <ArrowUp className="w-4.5 h-4.5" />
           </button>
         )}
       </div>
       {/* Quick action bar */}
       <div className="flex items-center gap-1.5 mt-2 px-1">
-        <QuickAction icon="auto_awesome" label="生成物料" onClick={() => prefillPrompt('生成物料')} />
-        <QuickAction icon="analytics" label="分析数据" onClick={() => prefillPrompt('分析数据')} />
-        <QuickAction icon="lightbulb" label="选题建议" onClick={() => prefillPrompt('选题建议')} />
-        <QuickAction icon="download" label="导出结果" onClick={() => prefillPrompt('导出结果')} />
+        <QuickAction Icon={Sparkle} label="生成物料" onClick={() => prefillPrompt('生成物料')} />
+        <QuickAction Icon={ChartBar} label="分析数据" onClick={() => prefillPrompt('分析数据')} />
+        <QuickAction Icon={Lightbulb} label="选题建议" onClick={() => prefillPrompt('选题建议')} />
+        <QuickAction Icon={Download} label="导出结果" onClick={() => prefillPrompt('导出结果')} />
         <div className="flex-1" />
         <div className="relative">
           <button onClick={() => setShowMoreActions(!showMoreActions)} className="text-muted hover:text-ink p-1.5 rounded-lg hover:bg-hairline transition-colors">
-            <span className="material-symbols-outlined text-[18px]">add</span>
+            <Plus className="w-4.5 h-4.5" />
           </button>
           {showMoreActions && <MoreActionsMenu onClose={() => setShowMoreActions(false)} onAction={prefillPrompt} />}
         </div>
@@ -646,12 +713,21 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
       <header className={`titlebar-drag h-12 flex items-center px-5 shrink-0 ${isWindows ? '' : 'border-b border-hairline'}`}>
         <h1 className="text-sm font-medium text-ink no-drag">创作台</h1>
         <div className="flex-1" />
+        {messages.length > 0 && (
+          <button
+            onClick={handleExportAllMessages}
+            className="no-drag text-muted hover:text-ink transition-colors mr-2"
+            title="导出对话记录 (.md)"
+          >
+            <Download className="w-5 h-5" />
+          </button>
+        )}
         <button
           onClick={handleNewChat}
           className="no-drag text-muted hover:text-ink transition-colors mr-2"
           title="新对话"
         >
-          <span className="material-symbols-outlined text-[20px]">add</span>
+          <Plus className="w-5 h-5" />
         </button>
       </header>
 
@@ -664,7 +740,7 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
             {isDragging && (
               <div className="absolute inset-0 bg-primary/10 border-2 border-dashed border-primary/30 rounded-xl z-20 flex items-center justify-center pointer-events-none">
                 <div className="text-center">
-                  <span className="material-symbols-outlined text-[48px] text-primary mb-2">upload_file</span>
+                  <UploadSimple className="w-12 h-12 text-primary mb-2" />
                   <p className="text-sm text-ink">拖放文件到这里导入</p>
                   <p className="text-[11px] text-muted">支持 .txt / .md / .docx</p>
                 </div>
@@ -679,7 +755,7 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
                 {/* 快速开始卡片 */}
                 <button className="card w-full max-w-md text-left mb-4 hover:border-primary/30 transition-colors group cursor-pointer" onClick={() => textareaRef.current?.focus()}>
                   <div className="flex items-center gap-3">
-                    <span className="material-symbols-outlined text-primary text-[20px]">edit_note</span>
+                    <Lightning className="w-5 h-5 text-primary" />
                     <div>
                       <p className="text-[14px] font-medium text-ink group-hover:text-primary transition-colors">粘贴脚本，一键生成物料</p>
                       <p className="text-[13px] text-muted">支持 B站 / YouTube / 抖音 / 小红书</p>
@@ -690,11 +766,11 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
                 {/* 快捷操作 */}
                 <div className="flex gap-3 justify-center">
                   <button className="card-sm flex items-center gap-2 hover:border-primary/30 transition-colors cursor-pointer" onClick={() => onNavigate?.('data')}>
-                    <span className="material-symbols-outlined text-[16px] text-primary">analytics</span>
+                    <ChartBar className="w-4 h-4 text-primary" />
                     <span className="text-[14px] text-ink">查看数据</span>
                   </button>
                   <button className="card-sm flex items-center gap-2 hover:border-primary/30 transition-colors cursor-pointer" onClick={() => onNavigate?.('settings')}>
-                    <span className="material-symbols-outlined text-[16px] text-primary">settings</span>
+                    <GearSix className="w-4 h-4 text-primary" />
                     <span className="text-[14px] text-ink">配置 API</span>
                   </button>
                 </div>
@@ -727,7 +803,10 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
                   return (
                     <div
                       key={msg.id}
-                      className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} ${isNewMsg ? 'animate-msg-enter' : ''}`}
+                      ref={isNewMsg && !animatedMsgIdsRef.current.has(msg.id)
+                        ? (el) => { if (el) { animateMessage(el, msg.role); animatedMsgIdsRef.current.add(msg.id) } }
+                        : undefined}
+                      className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
                     >
                       <div className={`${msg.role === 'user' ? 'max-w-[75%]' : 'w-full'} group/bubble relative`}>
                         {/* Tool call timeline */}
@@ -742,7 +821,7 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
                                 : 'Error'
                               const elapsed = tc.endTime ? `${((tc.endTime - tc.startTime) / 1000).toFixed(1)}s` : ''
                               return (
-                                <div key={i} className="flex items-center gap-1.5">
+                                <div key={i} ref={(el) => { if (el) timelinePillEnter(el) }} className="flex items-center gap-1.5">
                                   {i > 0 && <span className="text-muted-soft">→</span>}
                                   <span className={`timeline-pill ${pillClass}`}>{label}</span>
                                   <span className="text-[13px] text-muted">{toolLabels[tc.name] || tc.name}</span>
@@ -778,8 +857,8 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
                                 autoFocus
                               />
                               <div className="flex gap-2 mt-2">
-                                <button onClick={handleConfirmEdit} className="btn-primary text-xs" style={{ height: 32, padding: '6px 14px' }}>发送</button>
-                                <button onClick={() => setEditingMsgId(null)} className="btn-secondary text-xs" style={{ height: 32, padding: '6px 14px' }}>取消</button>
+                                <button onClick={handleConfirmEdit} className="btn-primary text-xs h-8 px-3.5">发送</button>
+                                <button onClick={() => setEditingMsgId(null)} className="btn-secondary text-xs h-8 px-3.5">取消</button>
                               </div>
                             </div>
                           ) : (
@@ -791,7 +870,7 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
                                   className="absolute -left-8 top-1/2 -translate-y-1/2 opacity-0 group-hover/bubble:opacity-100 transition-opacity text-muted hover:text-ink"
                                   title="编辑"
                                 >
-                                  <span className="material-symbols-outlined text-[14px]">edit</span>
+                                  <PencilSimple className="w-3.5 h-3.5" />
                                 </button>
                               )}
                             </div>
@@ -802,25 +881,23 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
                         {msg.role === 'assistant' && msg.content && (
                           <div className="msg-actions group-hover:opacity-100">
                             <button onClick={() => handleFeedback(msg.id, 'good')} className="msg-action-btn" title="有帮助">
-                              <span className="material-symbols-outlined text-[14px]">thumb_up</span>
+                              <ThumbsUp className="w-3.5 h-3.5" />
                             </button>
                             <button onClick={() => handleFeedback(msg.id, 'bad')} className="msg-action-btn" title="没帮助">
-                              <span className="material-symbols-outlined text-[14px]">thumb_down</span>
+                              <ThumbsDown className="w-3.5 h-3.5" />
                             </button>
                             <button onClick={() => handleCopy(msg.id, msg.content)} className="msg-action-btn" title="复制">
-                              <span className="material-symbols-outlined text-[14px]">
-                                {copiedId === msg.id ? 'check' : 'content_copy'}
-                              </span>
+                              {copiedId === msg.id ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                             </button>
                             <button onClick={() => handleExportMessage(msg)} className="msg-action-btn" title="导出">
-                              <span className="material-symbols-outlined text-[14px]">ios_share</span>
+                              <Export className="w-3.5 h-3.5" />
                             </button>
                             <button onClick={() => handleRegenerate(msg)} className="msg-action-btn" title="重新生成">
-                              <span className="material-symbols-outlined text-[14px]">refresh</span>
+                              <ArrowsClockwise className="w-3.5 h-3.5" />
                             </button>
                             {materialData && (
                               <button onClick={() => openCanvas(materialData)} className="msg-action-btn" title="在面板查看">
-                                <span className="material-symbols-outlined text-[14px]">dashboard</span>
+                                <StackSimple className="w-3.5 h-3.5" />
                               </button>
                             )}
                           </div>
@@ -862,7 +939,7 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
                 onClick={() => { setAutoScroll(true); scrollToBottom() }}
                 className="fixed bottom-28 left-1/2 -translate-x-1/2 z-20 px-4 py-2 rounded-full bg-surface border border-hairline text-xs text-ink hover:bg-canvas-soft transition-colors flex items-center gap-1.5 animate-fade-in"
               >
-                <span className="material-symbols-outlined text-[14px]">arrow_downward</span>
+                <ArrowDown className="w-3.5 h-3.5" />
                 有新消息
               </button>
             )}
@@ -874,17 +951,17 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
 
         {/* Canvas side panel */}
         {canvasOpen && (
-          <div className="w-[420px] border-l border-hairline bg-canvas-soft flex flex-col shrink-0">
+          <div ref={(el) => { if (el) { el.style.opacity = '0'; gsap.set(el, { x: 20 }); gsap.to(el, { opacity: 1, x: 0, duration: 0.3, ease: 'power2.out', clearProps: 'transform' }) } }} className="w-[420px] border-l border-hairline bg-canvas-soft flex flex-col shrink-0">
             <div className="flex items-center justify-between px-4 py-3 border-b border-hairline">
               <span className="text-sm font-medium text-ink flex items-center gap-2">
-                <span className="material-symbols-outlined text-[16px] text-primary">dashboard</span>
+                <StackSimple className="w-4 h-4 text-primary" />
                 物料面板
               </span>
               <button onClick={() => setCanvasOpen(false)} className="text-muted hover:text-ink">
-                <span className="material-symbols-outlined text-[18px]">close</span>
+                <X className="w-4.5 h-4.5" />
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto p-4">
+            <div className="flex-1 overflow-y-auto overflow-x-hidden p-4">
               {canvasData && <MaterialCards data={canvasData} />}
             </div>
             <div className="px-4 py-3 border-t border-hairline flex gap-2">
@@ -894,7 +971,7 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
                 navigator.clipboard.writeText(text)
                 showToast('已复制全部物料', 'success')
               }} className="flex-1 btn-primary text-xs flex items-center justify-center gap-1">
-                <span className="material-symbols-outlined text-[14px]">content_copy</span>
+                <Copy className="w-3.5 h-3.5" />
                 复制全部
               </button>
               <button onClick={() => {
@@ -908,7 +985,7 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
                 URL.revokeObjectURL(url)
                 showToast('已导出物料', 'success')
               }} className="flex-1 btn-secondary text-xs flex items-center justify-center gap-1">
-                <span className="material-symbols-outlined text-[14px]">ios_share</span>
+                <Export className="w-3.5 h-3.5" />
                 导出
               </button>
             </div>

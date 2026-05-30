@@ -1116,8 +1116,14 @@ async function getRecentCrawlSummary() {
   }).join('\n')
 }
 
+function reloadDb() {
+  if (_saveTimer) { clearTimeout(_saveTimer); _saveTimer = null }
+  _dirty = false
+  db = null
+}
+
 module.exports = {
-  getDb, saveDb: flushDb, saveScript, getScript, listScripts,
+  getDb, saveDb: flushDb, reloadDb, saveScript, getScript, listScripts,
   createConversation, updateConversationTitle, deleteConversation, togglePinConversation,
   listConversations, addMessage, getMessages, deleteMessage,
   upsertMemory, getMemories,

@@ -51,6 +51,12 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
   }
 
+  // 捕获渲染进程 console 输出到主进程终端
+  mainWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+    const prefix = ['[INFO]', '[WARN]', '[ERROR]'][level] || '[LOG]'
+    console.log(`[Renderer ${prefix}] ${message} (${sourceId}:${line})`)
+  })
+
   mainWindow.on('closed', () => {
     mainWindow = null
   })
@@ -137,6 +143,11 @@ ipcMain.handle('agent-run', async (event, script: string, platforms: string[], c
     model: (settings.model as string) || 'claude-sonnet-4-20250514',
     baseUrl: (settings.baseUrl as string) || '',
     provider: (settings.apiProvider as string) || 'claude',
+    temperature: typeof settings.temperature === 'number' ? settings.temperature : 0.7,
+    maxTokens: typeof settings.maxTokens === 'number' ? settings.maxTokens : 4096,
+    contentStyle: (settings.contentStyle as string) || '',
+    scriptDuration: (settings.scriptDuration as string) || '',
+    defaultLanguage: (settings.defaultLanguage as string) || '',
   })
   currentAgent = agent
 
@@ -389,6 +400,146 @@ ipcMain.handle('clean-old-data', async () => {
   return true
 })
 
+// ============================================================
+//  API 连接测试（在主进程中执行，避免 CORS 问题）
+// ============================================================
+
+const PROVIDER_DEFAULTS: Record<string, string> = {
+  claude: 'https://api.anthropic.com',
+  openai: 'https://api.openai.com',
+  deepseek: 'https://api.deepseek.com',
+  qwen: 'https://dashscope.aliyuncs.com/compatible-mode',
+}
+
+ipcMain.handle('test-connection', async (_event, settings: {
+  provider: string; apiKey: string; baseUrl: string; model: string;
+}) => {
+  // 归一化 base URL：去掉尾部斜杠和 /v1 后缀，再统一拼接
+  const raw = settings.baseUrl || PROVIDER_DEFAULTS[settings.provider] || ''
+  const base = raw.replace(/\/+$/, '').replace(/\/v1$/, '')
+  const isClaude = settings.provider === 'claude'
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  let endpoint: string
+  let body: Record<string, unknown>
+
+  if (isClaude) {
+    endpoint = `${base}/v1/messages`
+    headers['x-api-key'] = settings.apiKey
+    headers['anthropic-version'] = '2023-06-01'
+    body = { model: settings.model, max_tokens: 32, messages: [{ role: 'user', content: 'ping' }] }
+  } else {
+    endpoint = `${base}/v1/chat/completions`
+    headers['Authorization'] = `Bearer ${settings.apiKey}`
+    body = { model: settings.model, max_tokens: 32, messages: [{ role: 'user', content: 'ping' }] }
+  }
+
+  const res = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(body) })
+  if (res.ok) {
+    return { ok: true, msg: '连接成功' }
+  }
+  const err = await res.text().catch(() => res.statusText)
+  return { ok: false, msg: `错误 ${res.status}: ${err.slice(0, 120)}` }
+})
+
+// ============================================================
+//  导入数据库
+// ============================================================
+
+ipcMain.handle('import-db', async () => {
+  const { dialog } = require('electron')
+  const result = await dialog.showOpenDialog({
+    title: '选择 knower 数据库文件',
+    filters: [{ name: 'SQLite 数据库', extensions: ['db'] }],
+    properties: ['openFile'],
+  })
+  if (result.canceled || !result.filePaths[0]) return { success: false, canceled: true }
+
+  const srcPath = result.filePaths[0]
+  const destPath = path.join(__dirname, '..', 'knower-agent', 'knower.db')
+
+  try {
+    // 验证文件是有效的 SQLite 数据库
+    const initSqlJs = require('sql.js')
+    const SQL = await initSqlJs()
+    const buffer = fs.readFileSync(srcPath)
+    const testDb = new SQL.Database(buffer)
+    const tables = testDb.exec("SELECT name FROM sqlite_master WHERE type='table'")
+    testDb.close()
+
+    if (!tables.length || !tables[0].values.length) {
+      return { success: false, error: '文件不是有效的 SQLite 数据库' }
+    }
+
+    // 备份当前数据库
+    if (fs.existsSync(destPath)) {
+      const backupPath = destPath + `.bak.${Date.now()}`
+      fs.copyFileSync(destPath, backupPath)
+    }
+
+    // 替换数据库文件
+    fs.copyFileSync(srcPath, destPath)
+
+    // 重新加载
+    db.reloadDb()
+    console.log(`[DB] 数据库已导入，来源: ${srcPath}，表: ${tables[0].values.map((r: unknown[]) => r[0]).join(', ')}`)
+    return { success: true, tables: tables[0].values.map((r: unknown[]) => r[0] as string) }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    console.error('[DB] 导入失败:', message)
+    return { success: false, error: message }
+  }
+})
+
+// ============================================================
+//  爬虫登录状态检测
+// ============================================================
+
+ipcMain.handle('check-login-states', async () => {
+  const crawlerDir = path.join(__dirname, '..', 'knower-agent', 'crawler')
+  const browserDataDir = path.join(crawlerDir, 'mediasrc', 'browser_data')
+
+  const platforms = [
+    { key: 'bili', dir: 'bili_user_data_dir' },
+    { key: 'dy', dir: 'dy_user_data_dir' },
+    { key: 'xhs', dir: 'xhs_user_data_dir' },
+    { key: 'wb', dir: 'wb_user_data_dir' },
+  ]
+
+  const states: Record<string, boolean> = {}
+  for (const p of platforms) {
+    const cookiePath = path.join(browserDataDir, p.dir, 'Default', 'Cookies')
+    try {
+      const stat = fs.statSync(cookiePath)
+      states[p.key] = stat.size > 0
+    } catch {
+      states[p.key] = false
+    }
+  }
+  return states
+})
+
+ipcMain.handle('clear-login-state', async (_event, platform: string) => {
+  const crawlerDir = path.join(__dirname, '..', 'knower-agent', 'crawler')
+  const browserDataDir = path.join(crawlerDir, 'mediasrc', 'browser_data')
+  const dirMap: Record<string, string> = {
+    bili: 'bili_user_data_dir',
+    dy: 'dy_user_data_dir',
+    xhs: 'xhs_user_data_dir',
+    wb: 'wb_user_data_dir',
+  }
+  const dirName = dirMap[platform]
+  if (!dirName) return false
+  const cookiePath = path.join(browserDataDir, dirName, 'Default', 'Cookies')
+  try {
+    if (fs.existsSync(cookiePath)) {
+      fs.unlinkSync(cookiePath)
+    }
+    return true
+  } catch {
+    return false
+  }
+})
+
 ipcMain.handle('get-creators', async () => {
   return await db.getCreators()
 })
@@ -451,6 +602,7 @@ ipcMain.handle('export-source-data', async (_event, sourceUid: string) => {
 
 ipcMain.handle('analyze-video-data', async (_event, platform: string, sourceUid?: string) => {
   const settings = readSettings()
+  console.log(`[Analysis] 开始分析 platform=${platform} sourceUid=${sourceUid || '(全部)'}`)
 
   // 1. 先查数据库缓存
   const cached = await db.getVideoAnalysis(platform || 'bili', sourceUid || '')
@@ -458,6 +610,7 @@ ipcMain.handle('analyze-video-data', async (_event, platform: string, sourceUid?
     const videos = sourceUid
       ? await db.getVideosBySource(platform || 'bili', sourceUid)
       : await db.getAllCrawlContent(platform || 'bili')
+    console.log(`[Analysis] 命中缓存，视频数=${videos.length} 缓存数=${cached.videoCount}`)
     if (videos.length === cached.videoCount) {
       // 从 creators 表补全粉丝数
       let fans = cached.analysis.fans || 0
@@ -477,7 +630,11 @@ ipcMain.handle('analyze-video-data', async (_event, platform: string, sourceUid?
   const videos = sourceUid
     ? await db.getVideosBySource(platform || 'bili', sourceUid)
     : await db.getAllCrawlContent(platform || 'bili')
-  if (!videos.length) return null
+  if (!videos.length) {
+    console.log('[Analysis] 无视频数据，跳过分析')
+    return null
+  }
+  console.log(`[Analysis] 获取到 ${videos.length} 条视频数据，开始 LLM 分析...`)
 
   // 从 raw_json 提取完整指标
   const enriched = videos.map((v: Record<string, unknown>) => {
@@ -573,12 +730,16 @@ ${videoDataStr}
     .map((b: { type: string; text: string }) => b.text)
     .join('')
 
+  console.log(`[Analysis] LLM 返回 ${text.length} 字，开始解析...`)
+
   // 解析 JSON
   let analysis
   try {
     const jsonMatch = text.match(/\{[\s\S]*\}/)
     analysis = jsonMatch ? JSON.parse(jsonMatch[0]) : {}
+    console.log('[Analysis] JSON 解析成功，topTopics:', JSON.stringify(analysis.topTopics?.slice(0, 3)))
   } catch {
+    console.error('[Analysis] JSON 解析失败，原始文本:', text.slice(0, 200))
     analysis = {}
   }
 
@@ -609,6 +770,7 @@ ${videoDataStr}
 
   // 3. 存入数据库缓存
   await db.saveVideoAnalysis(platform || 'bili', sourceUid || '', result, enriched.length, overview)
+  console.log(`[Analysis] 分析完成并缓存，视频数=${enriched.length} 总播放=${totalPlay}`)
 
   return result
 })

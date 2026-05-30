@@ -68,10 +68,11 @@ class OpenAICompatClient {
     return result
   }
 
-  async chat({ system, messages, tools, maxTokens = 8096 }) {
+  async chat({ system, messages, tools, maxTokens = 8096, temperature = 0.7 }) {
     const body = {
       model: this.model,
       max_tokens: maxTokens,
+      temperature,
       messages: this._convertMessages(system, messages),
     }
     const convertedTools = this._convertTools(tools)
@@ -114,10 +115,11 @@ class OpenAICompatClient {
     return { content, stopReason, usage: data.usage }
   }
 
-  async *stream({ system, messages, tools, maxTokens = 8096, signal }) {
+  async *stream({ system, messages, tools, maxTokens = 8096, temperature = 0.7, signal }) {
     const body = {
       model: this.model,
       max_tokens: maxTokens,
+      temperature,
       stream: true,
       messages: this._convertMessages(system, messages),
     }
