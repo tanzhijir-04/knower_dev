@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import electron from 'vite-plugin-electron'
-import electronRenderer from 'vite-plugin-electron-renderer'
+import renderer from 'vite-plugin-electron-renderer'
 import path from 'path'
 
 export default defineConfig({
@@ -14,15 +14,15 @@ export default defineConfig({
           build: {
             outDir: 'dist-electron',
             rollupOptions: {
-              external: ['electron', 'electron-store'],
+              external: ['electron'],
             },
           },
         },
       },
       {
         entry: 'electron/preload.ts',
-        onstart(args) {
-          args.reload()
+        onstart(options) {
+          options.reload()
         },
         vite: {
           build: {
@@ -34,7 +34,7 @@ export default defineConfig({
         },
       },
     ]),
-    electronRenderer(),
+    renderer(),
   ],
   resolve: {
     alias: {
