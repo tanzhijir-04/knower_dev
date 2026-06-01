@@ -105,6 +105,42 @@ module.exports = {
       let hasData = topContent.length > 0 || trends.length > 0
       log(`数据充足性: ${hasData ? '有数据' : '无数据（将使用降级模式）'}`)
 
+      // 如果没有数据，先尝试获取全网热点数据
+      if (!hasData) {
+        log('无本地数据，尝试获取全网热点...')
+        progress('正在获取平台热点...')
+
+        try {
+          const { fetchTrending } = require('../../lib/trending')
+          const platformSourceMap = {
+            bili: 'bilibili',
+            dy: 'douyin',
+            wb: 'weibo',
+            xhs: 'weibo',
+          }
+          const sourceId = platformSourceMap[platform] || 'bilibili'
+          const trendingData = await fetchTrending([sourceId])
+          const trendingItems = trendingData[sourceId] || []
+
+          if (trendingItems.length > 0) {
+            log(`获取到 ${trendingItems.length} 条热点`)
+            // 将热点数据转换为 trends 格式
+            trends = trendingItems.slice(0, 20).map(t => ({
+              title: t.title,
+              desc: t.extra?.desc || t.extra?.info || '',
+              authorName: t.extra?.author || '',
+              playCount: t.extra?.view || 0,
+              likeCount: t.extra?.like || 0,
+              commentCount: 0,
+              createdAt: t.extra?.pubDate ? new Date(t.extra.pubDate).toISOString() : new Date().toISOString(),
+            }))
+            hasData = true
+          }
+        } catch (err) {
+          log(`获取热点失败: ${err.message}`)
+        }
+      }
+
       // 如果没有数据，自动爬取一轮热点
       if (!hasData) {
         log('无本地数据，尝试自动爬取平台热点...')

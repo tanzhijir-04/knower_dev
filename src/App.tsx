@@ -4,6 +4,7 @@ import ChatView from './components/ChatView'
 import TopicsView from './components/TopicsView'
 import DataView from './components/DataView'
 import SettingsView from './components/SettingsView'
+import TrendingView from './components/TrendingView'
 import { ToastProvider } from './contexts/ToastContext'
 import { PlatformProvider } from './contexts/PlatformContext'
 import { AccountProvider } from './contexts/AccountContext'
@@ -11,9 +12,9 @@ import { pageEnter, pageExit } from './lib/gsap'
 import { Minus, Square, X } from '@phosphor-icons/react'
 import type { TopicSuggestion } from './types/electron'
 
-export type Page = 'chat' | 'topics' | 'data' | 'settings'
+export type Page = 'chat' | 'topics' | 'data' | 'settings' | 'trending'
 
-const PAGE_ORDER: Page[] = ['chat', 'data', 'topics', 'settings']
+const PAGE_ORDER: Page[] = ['chat', 'data', 'trending', 'topics', 'settings']
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<Page>('chat')
@@ -22,7 +23,7 @@ export default function App() {
   const [conversationVersion, setConversationVersion] = useState(0)
   const prevPageRef = useRef<Page>('chat')
   const pageRefs = useRef<Record<Page, HTMLDivElement | null>>({
-    chat: null, data: null, topics: null, settings: null,
+    chat: null, data: null, topics: null, settings: null, trending: null,
   })
   const animatingRef = useRef(false)
 
@@ -130,6 +131,9 @@ export default function App() {
               </div>
               <div ref={el => { pageRefs.current.data = el }} style={pageStyle('data')}>
                 <DataView />
+              </div>
+              <div ref={el => { pageRefs.current.trending = el }} style={pageStyle('trending')}>
+                <TrendingView />
               </div>
               <div ref={el => { pageRefs.current.topics = el }} style={pageStyle('topics')}>
                 <TopicsView onSendToChat={handleSendTopicToChat} />

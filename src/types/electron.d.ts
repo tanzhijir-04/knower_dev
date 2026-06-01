@@ -206,6 +206,35 @@ export interface TrendData {
   createdAt: string
 }
 
+export interface TrendingItem {
+  id: string
+  title: string
+  url: string
+  platform: string
+  extra?: {
+    author?: string
+    view?: number
+    like?: number
+    desc?: string
+    pubDate?: number
+    hotValue?: string
+    flag?: string
+    info?: string
+  }
+}
+
+export interface TrendingSource {
+  name: string
+  column: string
+  desc?: string
+}
+
+export interface TrendingConfig {
+  sources: string[]
+  order: string[]
+  lastRefresh: number
+}
+
 export interface ElectronAPI {
   // 平台信息
   platform: string
@@ -280,6 +309,11 @@ export interface ElectronAPI {
   addCompetitor: (platform: string, userId: string, nickname: string) => Promise<boolean>
   removeCompetitor: (id: number) => Promise<boolean>
   listCompetitors: (platform: string) => Promise<Competitor[]>
+  // 全网热点
+  fetchTrending: (platforms?: string[]) => Promise<Record<string, TrendingItem[]>>
+  getTrendingSources: () => Promise<{ sources: Record<string, TrendingSource>; config: TrendingConfig }>
+  setTrendingConfig: (config: { sources: string[]; order: string[] }) => Promise<boolean>
+  openUrl: (url: string) => Promise<void>
 }
 
 declare global {

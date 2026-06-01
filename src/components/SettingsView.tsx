@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { usePlatform } from '../contexts/PlatformContext'
 import { useAccount } from '../contexts/AccountContext'
 import { Eye, EyeSlash, Check, ArrowClockwise, Trash, Link, Spinner, Download, Plus, PencilSimple } from '@phosphor-icons/react'
+import type { TrendingSource, TrendingConfig } from '../types/electron'
 
 interface Settings {
   apiProvider: string
@@ -262,6 +263,8 @@ export default function SettingsView() {
   const [loadingCount, setLoadingCount] = useState(false)
   const [loginStates, setLoginStates] = useState<Record<string, boolean>>({})
   const { isWindows } = usePlatform()
+  const [trendingSources, setTrendingSources] = useState<Record<string, TrendingSource>>({})
+  const [trendingConfig, setTrendingConfig] = useState<TrendingConfig>({ sources: ['bilibili', 'douyin', 'weibo'], order: ['bilibili', 'douyin', 'weibo'], lastRefresh: 0 })
 
   // Load settings from store
   useEffect(() => {
@@ -297,6 +300,16 @@ export default function SettingsView() {
   }, [])
 
   useEffect(() => { loadLoginStates() }, [loadLoginStates])
+
+  // Load trending sources
+  useEffect(() => {
+    window.electronAPI?.getTrendingSources().then((result) => {
+      if (result) {
+        setTrendingSources(result.sources)
+        setTrendingConfig(result.config)
+      }
+    })
+  }, [])
 
   // Load data count
   const loadDataCount = useCallback(async () => {
@@ -673,7 +686,64 @@ export default function SettingsView() {
         </section>
 
         {/* ============================================================ */}
-        {/*  5. 创作者管理                                                */}
+        {/*  5. 全网热点数据源                                             */}
+        {/* ============================================================ */}
+        <section>
+          <h2 className="text-xs uppercase tracking-wider text-muted mb-4">全网热点数据源</h2>
+          <div className="card-sm space-y-4">
+            <p className="text-[11px] text-muted">选择要启用的热点数据源，用于灵感库和全网热点页面</p>
+            {['china', 'tech', 'world'].map(col => {
+              const colLabel = col === 'china' ? '中国' : col === 'tech' ? '科技' : '国际'
+              const colSources = Object.entries(trendingSources).filter(([, s]) => s.column === col)
+              if (colSources.length === 0) return null
+              return (
+                <div key={col}>
+                  <label className="block text-[11px] font-semibold text-muted uppercase tracking-wider mb-2">{colLabel}</label>
+                  <div className="flex flex-wrap gap-2">
+                    {colSources.map(([id, src]) => (
+                      <label
+                        key={id}
+                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs cursor-pointer transition-colors ${
+                          trendingConfig.sources.includes(id)
+                            ? 'border-primary/40 bg-primary/10 text-primary'
+                            : 'border-hairline text-muted hover:border-hairline-strong'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={trendingConfig.sources.includes(id)}
+                          onChange={() => {
+                            const newSources = trendingConfig.sources.includes(id)
+                              ? trendingConfig.sources.filter(x => x !== id)
+                              : [...trendingConfig.sources, id]
+                            const newOrder = newSources.length > 0
+                              ? (trendingConfig.order.length > 0
+                                ? trendingConfig.order.filter(x => newSources.includes(x))
+                                : newSources)
+                              : []
+                            const newConfig = { ...trendingConfig, sources: newSources, order: newOrder }
+                            setTrendingConfig(newConfig)
+                            window.electronAPI?.setTrendingConfig({ sources: newSources, order: newOrder })
+                          }}
+                          className="sr-only"
+                        />
+                        <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 ${
+                          trendingConfig.sources.includes(id) ? 'bg-primary border-primary' : 'border-hairline-strong'
+                        }`}>
+                          {trendingConfig.sources.includes(id) && <Check className="w-2.5 h-2.5 text-on-primary" />}
+                        </span>
+                        {src.name}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </section>
+
+        {/* ============================================================ */}
+        {/*  6. 创作者管理                                                */}
         {/* ============================================================ */}
         <section>
           <h2 className="text-xs uppercase tracking-wider text-muted mb-4">创作者管理</h2>
@@ -683,7 +753,7 @@ export default function SettingsView() {
         </section>
 
         {/* ============================================================ */}
-        {/*  6. 关于                                                      */}
+        {/*  7. 关于                                                      */}
         {/* ============================================================ */}
         <section>
           <h2 className="text-xs uppercase tracking-wider text-muted mb-4">关于</h2>

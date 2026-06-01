@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import gsap from 'gsap'
-import { Chats, ChartBar, SquaresFour, GearSix, PencilSimple, PushPin, Download, Trash, MagnifyingGlass, Sun, Moon, Desktop, CaretLeft, DotsThree } from '@phosphor-icons/react'
+import { Chats, ChartBar, SquaresFour, GearSix, TrendUp, PencilSimple, PushPin, Download, Trash, MagnifyingGlass, Sun, Moon, Desktop, CaretLeft, DotsThree } from '@phosphor-icons/react'
 import type { ComponentType } from 'react'
 import type { Page } from '../App'
 import type { Message } from '../types/electron'
@@ -17,6 +17,7 @@ interface SidebarProps {
 const navItems: { id: Page; icon: ComponentType<{ className?: string }>; label: string }[] = [
   { id: 'chat', icon: Chats, label: '创作台' },
   { id: 'data', icon: ChartBar, label: '数据分析' },
+  { id: 'trending', icon: TrendUp, label: '全网热点' },
   { id: 'topics', icon: SquaresFour, label: '灵感库' },
   { id: 'settings', icon: GearSix, label: '设置' },
 ]

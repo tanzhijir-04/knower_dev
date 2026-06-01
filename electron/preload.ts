@@ -91,4 +91,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('competitor-add', platform, userId, nickname),
   removeCompetitor: (id: number) => ipcRenderer.invoke('competitor-remove', id),
   listCompetitors: (platform: string) => ipcRenderer.invoke('competitor-list', platform),
+  // 全网热点
+  fetchTrending: (platforms?: string[]) => ipcRenderer.invoke('trending-fetch', platforms),
+  getTrendingSources: () => ipcRenderer.invoke('trending-sources'),
+  setTrendingConfig: (config: { sources: string[]; order: string[] }) => ipcRenderer.invoke('trending-set-config', config),
+  openUrl: (url: string) => ipcRenderer.invoke('open-url', url),
 })

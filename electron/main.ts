@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, nativeImage } from 'electron'
+import { app, BrowserWindow, ipcMain, nativeImage, shell } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -1002,5 +1002,57 @@ ipcMain.handle('topic-to-chat', async (_event, topic: Record<string, unknown>) =
   if (mainWindow) {
     mainWindow.webContents.send('topic-to-chat-event', JSON.stringify(topic))
   }
+  return true
+})
+
+// ============================================================
+//  打开外部链接
+// ============================================================
+ipcMain.handle('open-url', async (_event, url: string) => {
+  if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
+    await shell.openExternal(url)
+  }
+  return true
+})
+
+// ============================================================
+//  全网热点
+// ============================================================
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const trending = require('../knower-agent/lib/trending')
+
+const TRENDING_DEFAULTS = { sources: ['bilibili', 'douyin', 'weibo'], order: ['bilibili', 'douyin', 'weibo'], lastRefresh: 0 }
+
+function getTrendingConfig() {
+  const settings = readSettings()
+  const saved = settings.trendingConfig
+  if (!saved) return TRENDING_DEFAULTS
+  const order = (Array.isArray(saved.order) && saved.order.length > 0)
+    ? saved.order
+    : [...new Set([...(saved.sources || []), ...TRENDING_DEFAULTS.order])]
+  return { ...saved, order }
+}
+
+function saveTrendingConfig(config: { sources: string[]; order: string[]; lastRefresh?: number }) {
+  const settings = readSettings()
+  settings.trendingConfig = config
+  writeSettings(settings)
+}
+
+ipcMain.handle('trending-fetch', async (_event, platforms?: string[]) => {
+  const config = getTrendingConfig()
+  const sources = platforms || config.sources || TRENDING_DEFAULTS.sources
+  const result = await trending.fetchTrending(sources)
+  return result
+})
+
+ipcMain.handle('trending-sources', async () => {
+  const config = getTrendingConfig()
+  return { sources: trending.SOURCES, config }
+})
+
+ipcMain.handle('trending-set-config', async (_event, config: { sources: string[]; order: string[] }) => {
+  saveTrendingConfig({ ...config, lastRefresh: Date.now() })
   return true
 })
