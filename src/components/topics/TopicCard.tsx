@@ -19,6 +19,13 @@ const perfColors: Record<string, string> = {
   '参考同类': 'text-body',
 }
 
+function getScoreColor(score: number) {
+  if (score >= 80) return 'text-green-400 bg-green-500/15'
+  if (score >= 60) return 'text-yellow-400 bg-yellow-500/15'
+  if (score >= 40) return 'text-orange-400 bg-orange-500/15'
+  return 'text-red-400 bg-red-500/15'
+}
+
 export default function TopicCard({ topic, onClick, isActive }: Props) {
   const handleHover = (e: React.MouseEvent<HTMLButtonElement>) => {
     if (!isActive) gsap.to(e.currentTarget, { scale: 1.015, duration: 0.2, ease: 'power2.out' })
@@ -38,7 +45,14 @@ export default function TopicCard({ topic, onClick, isActive }: Props) {
           : 'border-hairline/20 bg-surface-low hover:border-hairline/40 hover:bg-canvas-soft'
       }`}
     >
-      <h3 className="text-sm font-medium text-ink mb-2 line-clamp-2">{topic.title}</h3>
+      <div className="flex items-start justify-between gap-2 mb-2">
+        <h3 className="text-sm font-medium text-ink line-clamp-2 flex-1">{topic.title}</h3>
+        {topic.overallScore != null && (
+          <span className={`text-xs font-mono font-bold px-2 py-0.5 rounded-lg shrink-0 ${getScoreColor(topic.overallScore)}`}>
+            {topic.overallScore}
+          </span>
+        )}
+      </div>
       <p className="text-xs text-body mb-3 line-clamp-2">{topic.reason}</p>
       <div className="flex items-center gap-2 flex-wrap">
         <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${sourceColors[topic.source] || 'bg-hairline text-body'}`}>
@@ -47,6 +61,12 @@ export default function TopicCard({ topic, onClick, isActive }: Props) {
         <span className={`text-[10px] ${perfColors[topic.estimatedPerformance] || 'text-body'}`}>
           {topic.estimatedPerformance}
         </span>
+        {topic.competitionLevel && (
+          <span className="text-[10px] text-muted">竞争{topic.competitionLevel}</span>
+        )}
+        {topic.urgency && (
+          <span className="text-[10px] text-muted">时效{topic.urgency}</span>
+        )}
       </div>
       {topic.tags && topic.tags.length > 0 && (
         <div className="flex flex-wrap gap-1 mt-2">

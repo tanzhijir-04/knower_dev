@@ -105,7 +105,17 @@ export default function TopicsView({ onSendToChat }: Props) {
   }
 
   const displayTopics = showSaved
-    ? savedTopics.map(s => ({ title: s.title, reason: s.reason, source: s.source, estimatedPerformance: s.estimatedPerformance, tags: s.tags }))
+    ? savedTopics.map(s => ({
+        title: s.title,
+        reason: s.reason,
+        source: s.source,
+        estimatedPerformance: s.estimatedPerformance,
+        tags: s.tags,
+        scores: s.fullData?.scores as TopicSuggestion['scores'],
+        overallScore: s.fullData?.overallScore as number | undefined,
+        urgency: s.fullData?.urgency as string | undefined,
+        competitionLevel: s.fullData?.competitionLevel as string | undefined,
+      }))
     : topics
 
   return (

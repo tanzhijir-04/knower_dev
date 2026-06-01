@@ -187,6 +187,16 @@ export interface TopicSuggestion {
   estimatedPerformance: string
   tags: string[]
   platforms?: string[]
+  scores?: {
+    heat: number
+    competition: number
+    feasibility: number
+    fit: number
+    urgency: number
+  }
+  overallScore?: number
+  urgency?: string
+  competitionLevel?: string
 }
 
 export interface SavedTopic extends TopicSuggestion {
