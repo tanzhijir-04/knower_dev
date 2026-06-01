@@ -1,11 +1,19 @@
 import { app, BrowserWindow, ipcMain, nativeImage } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { createRequire } from 'module'
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+const require = createRequire(import.meta.url)
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const Agent = require('../knower-agent/agent/core')
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { createClient } = require('../knower-agent/llm')
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const db = require('../knower-agent/db')
 
 const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
 
@@ -278,9 +286,6 @@ ipcMain.handle('agent-stop', () => {
 //  会话管理
 // ============================================================
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const db = require('../knower-agent/db')
-
 ipcMain.handle('conv-list', async () => {
   const active = await db.getActiveAccount()
   return await db.listConversations(50, active?.id || 'default')
@@ -371,7 +376,7 @@ ipcMain.handle('crawler-run', async (event, platform: string, keywords: string, 
 
     // 爬取完成后清除旧的分析缓存
     if (sourceUid) {
-      await db.deleteVideoAnalysis(platform, sourceUid)
+      await db.deleteVideoAnalysis(platform, sourceUid, active?.id || 'default')
     }
 
     if (result.contents && result.contents.length > 0) {
@@ -385,7 +390,7 @@ ipcMain.handle('crawler-run', async (event, platform: string, keywords: string, 
         || result.creators?.[0]?.avatar_url
         || ''
       const totalFans = parseInt(result.creators?.[0]?.total_fans) || 0
-      await db.saveCreator(sourceUid, creatorName, creatorAvatar, totalFans, accountId)
+      await db.saveCreator(sourceUid, creatorName, creatorAvatar, totalFans, active?.id || 'default')
     }
     if (result.creators && result.creators.length > 0) {
       await db.saveCrawlCreatorsBatch(taskId, platform, result.creators)
@@ -607,6 +612,26 @@ ipcMain.handle('delete-creator', async (_event, uid: string) => {
   const active = await db.getActiveAccount()
   await db.deleteCreator(uid, active?.id || 'default')
   return true
+})
+
+// ============================================================
+//  竞品管理
+// ============================================================
+
+ipcMain.handle('competitor-add', async (_event, platform: string, userId: string, nickname: string) => {
+  const active = await db.getActiveAccount()
+  await db.addCompetitor(platform, userId, nickname, active?.id || 'default')
+  return true
+})
+
+ipcMain.handle('competitor-remove', async (_event, id: number) => {
+  await db.removeCompetitor(id)
+  return true
+})
+
+ipcMain.handle('competitor-list', async (_event, platform: string) => {
+  const active = await db.getActiveAccount()
+  return await db.getCompetitors(platform, active?.id || 'default')
 })
 
 ipcMain.handle('export-source-data', async (_event, sourceUid: string) => {

@@ -107,18 +107,7 @@ function AnalysisCard({ analysis }: { analysis: MaterialData['analysis'] }) {
   )
 }
 
-function PlatformTab({ platform, material }: { platform: typeof PLATFORMS[number]; material: PlatformMaterial }) {
-  const formatText = () => {
-    const parts: string[] = []
-    if (material.title) parts.push(`标题: ${material.title}`)
-    if (material.hook) parts.push(`前3秒钩子: ${material.hook}`)
-    if (material.description) parts.push(`描述: ${material.description}`)
-    if (material.coverTitle) parts.push(`封面标题: ${material.coverTitle}`)
-    if (material.body) parts.push(`正文: ${material.body}`)
-    if (material.tags?.length) parts.push(`标签: ${material.tags.join(', ')}`)
-    return parts.join('\n')
-  }
-
+function PlatformTab({ material }: { platform: typeof PLATFORMS[number]; material: PlatformMaterial }) {
   return (
     <div className="space-y-3">
       {material.hook && (

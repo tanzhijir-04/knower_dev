@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
 import { usePlatform } from '../contexts/PlatformContext'
 import TrendPanel from './topics/TrendPanel'
+import CompetitorPanel from './topics/CompetitorPanel'
 import TopicCard from './topics/TopicCard'
 import TopicDetail from './topics/TopicDetail'
-import { PlayCircle, Palette, Hash, Tag, BookmarkSimple, Sparkle, Lightbulb } from '@phosphor-icons/react'
-import type { TopicSuggestion, TrendData, SavedTopic } from '../types/electron'
+import { PlayCircle, Palette, Tag, BookmarkSimple, Sparkle, Lightbulb } from '@phosphor-icons/react'
+import type { TopicSuggestion, TrendData, SavedTopic, Competitor } from '../types/electron'
 
 interface Props {
   onSendToChat?: (topic: TopicSuggestion) => void
@@ -27,6 +28,7 @@ export default function TopicsView({ onSendToChat }: Props) {
   const [savedTopics, setSavedTopics] = useState<SavedTopic[]>([])
   const [showSaved, setShowSaved] = useState(false)
   const [status, setStatus] = useState('')
+  const [competitors, setCompetitors] = useState<Competitor[]>([])
   const { isWindows } = usePlatform()
 
   const api = window.electronAPI
@@ -47,8 +49,15 @@ export default function TopicsView({ onSendToChat }: Props) {
     setSavedTopics(data)
   }, [api, platform])
 
+  const loadCompetitors = useCallback(async () => {
+    if (!api?.listCompetitors) return
+    const data = await api.listCompetitors(platform)
+    setCompetitors(data)
+  }, [api, platform])
+
   useEffect(() => { loadTrends() }, [loadTrends])
   useEffect(() => { loadSavedTopics() }, [loadSavedTopics])
+  useEffect(() => { loadCompetitors() }, [loadCompetitors])
 
   const handleGenerate = async () => {
     if (!api) return
@@ -158,7 +167,12 @@ export default function TopicsView({ onSendToChat }: Props) {
 
       {/* Content */}
       <div className="flex-1 flex overflow-hidden">
-        <TrendPanel trends={trends} loading={trendsLoading} />
+        <div className="w-64 shrink-0 border-r border-hairline/30 flex flex-col overflow-hidden">
+          <div className="flex-1 overflow-hidden flex flex-col">
+            <TrendPanel trends={trends} loading={trendsLoading} />
+          </div>
+          <CompetitorPanel platform={platform} competitors={competitors} onRefresh={loadCompetitors} />
+        </div>
 
         {/* Main area */}
         <div className="flex-1 flex overflow-hidden">

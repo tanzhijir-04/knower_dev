@@ -86,4 +86,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('topic-to-chat-event', handler)
     return () => ipcRenderer.removeListener('topic-to-chat-event', handler)
   },
+  // 竞品管理
+  addCompetitor: (platform: string, userId: string, nickname: string) =>
+    ipcRenderer.invoke('competitor-add', platform, userId, nickname),
+  removeCompetitor: (id: number) => ipcRenderer.invoke('competitor-remove', id),
+  listCompetitors: (platform: string) => ipcRenderer.invoke('competitor-list', platform),
 })

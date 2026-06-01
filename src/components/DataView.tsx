@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import type { CrawlContent, VideoAnalysis, SourceInfo, CreatorInfo } from '../types/electron'
+import type { CrawlContent, VideoAnalysis, SourceInfo } from '../types/electron'
 import { usePlatform } from '../contexts/PlatformContext'
 import { gsap } from '../lib/gsap'
 import TrendChart from './data/TrendChart'
@@ -59,8 +59,18 @@ const CHART_TABS: { key: string; label: string; icon: ComponentType<{ className?
 // ============================================================
 
 function Avatar({ src, name, size = 32 }: { src?: string; name: string; size?: number }) {
-  if (src) {
-    return <img src={src} alt={name} style={{ width: size, height: size }} className="rounded-full object-cover border border-hairline shrink-0" />
+  const [imgError, setImgError] = useState(false)
+
+  if (src && !imgError) {
+    return (
+      <img
+        src={src}
+        alt={name}
+        style={{ width: size, height: size }}
+        className="rounded-full object-cover border border-hairline shrink-0"
+        onError={() => setImgError(true)}
+      />
+    )
   }
   return (
     <div
@@ -880,7 +890,7 @@ export default function DataView() {
           sources={sources} selectedSource={selectedSource} searchQuery={searchQuery}
           onMagnifyingGlassChange={setMagnifyingGlassQuery} onSelect={setSelectedSource} onNewCrawl={handleNewCrawl}
           onContextMenu={(e, s) => setContextMenu({ x: e.clientX, y: e.clientY, source: s })}
-          onMoreMenu={(e) => setMoreMenuOpen(!moreMenuOpen)}
+          onMoreMenu={() => setMoreMenuOpen(!moreMenuOpen)}
         />
 
         <div className="flex-1 overflow-auto">

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { usePlatform } from '../contexts/PlatformContext'
 import { useAccount } from '../contexts/AccountContext'
-import { Eye, EyeSlash, Check, ArrowClockwise, Trash, Export, Link, Spinner, Download, Plus, PencilSimple, CaretDown, CaretUp } from '@phosphor-icons/react'
+import { Eye, EyeSlash, Check, ArrowClockwise, Trash, Link, Spinner, Download, Plus, PencilSimple } from '@phosphor-icons/react'
 
 interface Settings {
   apiProvider: string
@@ -55,7 +55,7 @@ const PLATFORM_COLORS: Record<string, string> = {
 }
 
 function CreatorManagement() {
-  const { accounts, activeAccount, createAccount, updateAccount, deleteAccount, switchAccount } = useAccount()
+  const { accounts, createAccount, updateAccount, deleteAccount, switchAccount } = useAccount()
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [formData, setFormData] = useState({
@@ -77,7 +77,7 @@ function CreatorManagement() {
     if (editingId) {
       await updateAccount(editingId, formData)
     } else {
-      const id = await createAccount(formData)
+      await createAccount(formData)
       // If this is the first account, it's auto-activated
     }
 

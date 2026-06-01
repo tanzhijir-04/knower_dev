@@ -1,5 +1,5 @@
 const { getTopContent, getRecentTrends, getMemories, getCompetitorRecentContent, getCompetitors } = require('../../db')
-const loadSettings = require('../../config')
+const settings = require('../../config')
 
 const MODE_PROMPTS = {
   trend: `基于平台趋势数据，生成追热型选题。
@@ -78,7 +78,6 @@ module.exports = {
       progress('检查 API Key...')
       log(`开始执行: platform=${platform}, mode=${mode}, count=${count}`)
 
-      const settings = loadSettings()
       if (!settings.apiKey) {
         log('错误: 缺少 API Key')
         return { error: '缺少 API Key，请在设置页面配置 API Key' }

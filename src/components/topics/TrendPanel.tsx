@@ -11,7 +11,7 @@ export default function TrendPanel({ trends, loading }: Props) {
     <div className="w-64 shrink-0 border-r border-hairline/30 flex flex-col overflow-hidden">
       <div className="px-4 py-3 border-b border-hairline/30">
         <h3 className="text-sm font-medium text-ink">平台趋势</h3>
-        <p className="text-[11px] text-mutedd mt-0.5">近 7 天热门内容</p>
+        <p className="text-[11px] text-muted mt-0.5">近 7 天热门内容</p>
       </div>
       <div className="flex-1 overflow-y-auto">
         {loading ? (
@@ -22,9 +22,9 @@ export default function TrendPanel({ trends, loading }: Props) {
           </div>
         ) : trends.length === 0 ? (
           <div className="text-center py-8 px-4">
-            <TrendUp className="w-6 h-6 text-mutedd mb-2" weight="fill" />
-            <p className="text-xs text-mutedd">暂无趋势数据</p>
-            <p className="text-[11px] text-mutedd mt-1">请先在数据概览中爬取平台数据</p>
+            <TrendUp className="w-6 h-6 text-muted mb-2" weight="fill" />
+            <p className="text-xs text-muted">暂无趋势数据</p>
+            <p className="text-[11px] text-muted mt-1">请先在数据概览中爬取平台数据</p>
           </div>
         ) : (
           <div className="divide-y divide-hairline/20">

@@ -171,6 +171,15 @@ export interface CreatorInfo {
   lastFetchedAt: string
 }
 
+export interface Competitor {
+  id: number
+  platform: string
+  userId: string
+  nickname: string
+  lastCheckedAt?: string
+  createdAt?: string
+}
+
 export interface TopicSuggestion {
   title: string
   reason: string
@@ -267,6 +276,10 @@ export interface ElectronAPI {
   getSavedTopics: (platform?: string) => Promise<SavedTopic[]>
   sendTopicToChat: (topic: Record<string, unknown>) => Promise<boolean>
   onTopicToChat: (callback: (event: string) => void) => () => void
+  // 竞品管理
+  addCompetitor: (platform: string, userId: string, nickname: string) => Promise<boolean>
+  removeCompetitor: (id: number) => Promise<boolean>
+  listCompetitors: (platform: string) => Promise<Competitor[]>
 }
 
 declare global {

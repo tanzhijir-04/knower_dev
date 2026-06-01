@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import gsap from 'gsap'
 import { Chats, ChartBar, SquaresFour, GearSix, PencilSimple, PushPin, Download, Trash, MagnifyingGlass, Sun, Moon, Desktop, CaretLeft, DotsThree } from '@phosphor-icons/react'
 import type { ComponentType } from 'react'
@@ -92,7 +92,7 @@ function ContextMenu({ x, y, onClose, onRename, onPin, onExport, onDelete, isPin
 function ConversationItem({
   conv, isActive, isEditing, editingTitle, onEditTitleChange,
   onSelect, onEdit, onConfirmEdit, onCancelEdit,
-  onContextMenu, onTogglePin, onDelete, onExport,
+  onContextMenu, onTogglePin,
 }: {
   conv: Conversation
   isActive: boolean
@@ -105,8 +105,6 @@ function ConversationItem({
   onCancelEdit: () => void
   onContextMenu: (e: React.MouseEvent) => void
   onTogglePin: () => void
-  onDelete: () => void
-  onExport: () => void
 }) {
   const [hovered, setHovered] = useState(false)
 
@@ -175,7 +173,6 @@ export default function Sidebar({ currentPage, onNavigate, onOpenConversation, c
   const logoTextRef = useRef<HTMLSpanElement>(null)
   const navLabelRefs = useRef<(HTMLSpanElement | null)[]>([])
   const convoSectionRef = useRef<HTMLDivElement>(null)
-  const contextMenuRef = useRef<HTMLDivElement>(null)
 
   // GSAP staggered collapse/expand animation
   useEffect(() => {
@@ -306,8 +303,6 @@ export default function Sidebar({ currentPage, onNavigate, onOpenConversation, c
       onCancelEdit={() => setEditingId(null)}
       onContextMenu={(e) => setContextMenu({ x: e.clientX, y: e.clientY, conv })}
       onTogglePin={() => handleTogglePin(conv.id)}
-      onDelete={() => handleDeleteConversation(conv.id)}
-      onExport={() => handleExportConversation(conv)}
     />
   )
 

@@ -160,7 +160,6 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
   const [conversationId, setConversationId] = useState<number | null>(null)
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [importedFile, setImportedFile] = useState<string | null>(null)
-  const [collapsedTools, setCollapsedTools] = useState<Record<string, boolean>>({})
   const [autoScroll, setAutoScroll] = useState(true)
   const [showMoreActions, setShowMoreActions] = useState(false)
   const [feedbackTarget, setFeedbackTarget] = useState<string | null>(null)
@@ -483,14 +482,6 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
     animatedMsgIdsRef.current.clear()
   }
 
-  const handleDeleteMessage = async (msgId: string) => {
-    const api = window.electronAPI
-    if (/^\d+$/.test(msgId) && msgId.length < 15) {
-      await api?.deleteMessage(Number(msgId))
-    }
-    setMessages(prev => prev.filter(m => m.id !== msgId))
-  }
-
   const handleExportMessage = (msg: Message) => {
     const role = msg.role === 'user' ? '用户' : '助手'
     const content = msg.role === 'assistant' ? msg.content.replace(/<[^>]+>/g, '') : msg.content
@@ -530,7 +521,7 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
     }
   }
 
-  const submitFeedback = (msgId: string, reason: string) => {
+  const submitFeedback = (_msgId: string, _reason: string) => {
     setFeedbackTarget(null)
     showToast('感谢反馈', 'success')
   }

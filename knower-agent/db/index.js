@@ -281,6 +281,25 @@ function initTables() {
   }
 
   db.run(`
+    CREATE TABLE IF NOT EXISTS competitors (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      platform TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      nickname TEXT NOT NULL,
+      account_id TEXT NOT NULL DEFAULT 'default',
+      last_checked_at TEXT,
+      created_at TEXT DEFAULT (datetime('now','localtime'))
+    )
+  `)
+  // 迁移: competitors 表加 last_checked_at
+  try {
+    db.exec('SELECT last_checked_at FROM competitors LIMIT 1')
+  } catch {
+    db.exec('ALTER TABLE competitors ADD COLUMN last_checked_at TEXT')
+    saveDb()
+  }
+
+  db.run(`
     CREATE TABLE IF NOT EXISTS saved_topics (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       platform TEXT NOT NULL,
@@ -800,7 +819,13 @@ async function getAllCrawlContent(platform, accountId = 'default') {
       commentCount: row[9],
       shareCount: row[10],
       playCount: row[11],
-      createdAt: row[12],
+      createdAt: (() => {
+        const raw2 = row[12]
+        if (!raw2) return ''
+        const ts = Number(raw2)
+        if (ts > 946684800 && ts < 4102444800) return new Date(ts * 1000).toISOString()
+        return raw2
+      })(),
       rawJson: raw,
       category: cat,
       sourceUid: row[15] || '',
@@ -916,7 +941,13 @@ async function getVideosBySource(platform, sourceUid, accountId = 'default') {
       commentCount: row[9],
       shareCount: row[10],
       playCount: row[11],
-      createdAt: row[12],
+      createdAt: (() => {
+        const raw2 = row[12]
+        if (!raw2) return ''
+        const ts = Number(raw2)
+        if (ts > 946684800 && ts < 4102444800) return new Date(ts * 1000).toISOString()
+        return raw2
+      })(),
       rawJson: raw,
       category: cat,
       sourceUid: row[15] || '',
@@ -1296,6 +1327,60 @@ async function deleteAccount(accountId) {
   saveDb()
 }
 
+// --- 竞品管理 ---
+
+async function addCompetitor(platform, userId, nickname, accountId = 'default') {
+  const db = await getDb()
+  db.run(
+    'INSERT INTO competitors (platform, user_id, nickname, account_id) VALUES (?, ?, ?, ?)',
+    [platform, userId, nickname, accountId]
+  )
+  saveDb()
+}
+
+async function removeCompetitor(id) {
+  const db = await getDb()
+  db.run('DELETE FROM competitors WHERE id = ?', [id])
+  saveDb()
+}
+
+async function getCompetitors(platform, accountId = 'default') {
+  const db = await getDb()
+  const result = db.exec(
+    'SELECT id, platform, user_id, nickname, last_checked_at, created_at FROM competitors WHERE platform = ? AND account_id = ? ORDER BY created_at DESC',
+    [platform, accountId]
+  )
+  if (!result.length || !result[0].values.length) return []
+  return result[0].values.map(row => ({
+    id: row[0],
+    platform: row[1],
+    userId: row[2],
+    nickname: row[3],
+    lastCheckedAt: row[4],
+    createdAt: row[5],
+  }))
+}
+
+async function getCompetitorRecentContent(platform, competitorUids, days = 7, accountId = 'default') {
+  if (!competitorUids || !competitorUids.length) return []
+  const db = await getDb()
+  const since = Math.floor(Date.now() / 1000) - days * 86400
+  const placeholders = competitorUids.map(() => '?').join(',')
+  const result = db.exec(
+    `SELECT cc.title, cc.like_count, cc.comment_count, cc.share_count, cc.play_count, cc.author_name, cc.category
+     FROM crawl_content cc
+     INNER JOIN crawl_tasks ct ON cc.task_id = ct.id
+     WHERE cc.platform = ? AND cc.source_uid IN (${placeholders}) AND ct.account_id = ?
+     ORDER BY cc.created_at DESC`,
+    [platform, ...competitorUids, accountId]
+  )
+  if (!result.length) return []
+  return result[0].values.map(row => ({
+    title: row[0], likeCount: row[1], commentCount: row[2], shareCount: row[3],
+    playCount: row[4], authorName: row[5], category: row[6],
+  }))
+}
+
 module.exports = {
   getDb, saveDb: flushDb, reloadDb, saveScript, getScript, listScripts,
   createConversation, updateConversationTitle, deleteConversation, togglePinConversation,
@@ -1310,4 +1395,5 @@ module.exports = {
   saveVideoAnalysis, getVideoAnalysis, deleteVideoAnalysis, getRecentCrawlSummary,
   getSourceDetail, getKeywordDetail,
   createAccount, listAccounts, getActiveAccount, switchAccount, updateAccount, deleteAccount,
+  addCompetitor, removeCompetitor, getCompetitors, getCompetitorRecentContent,
 }
