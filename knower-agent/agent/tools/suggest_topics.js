@@ -299,7 +299,7 @@ ${seriesHint}
           role: 'user',
           content: userContent,
         }],
-        maxTokens: 2048,
+        maxTokens: 4096,
       })
 
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
@@ -358,7 +358,23 @@ ${seriesHint}
             cleaned = cleaned.replace(/,\s*([\]}])/g, '$1')  // 移除尾部逗号
             return JSON.parse(cleaned)
           },
-          // 5. 尝试解析每个可能的 JSON 对象
+          // 5. 修复截断的 JSON（关闭未闭合的括号）
+          () => {
+            let cleaned = text.replace(/```(?:json)?\s*\n?/g, '').replace(/\n?```/g, '').trim()
+            cleaned = cleaned.replace(/,\s*([\]}])/g, '$1')
+            // 找到最后一个完整的对象，截断后面的内容
+            const lastCompleteObj = cleaned.lastIndexOf('}')
+            if (lastCompleteObj > 0) {
+              cleaned = cleaned.substring(0, lastCompleteObj + 1)
+              // 确保数组正确闭合
+              const openBrackets = (cleaned.match(/\[/g) || []).length
+              const closeBrackets = (cleaned.match(/]/g) || []).length
+              cleaned += ']'.repeat(openBrackets - closeBrackets)
+              return JSON.parse(cleaned)
+            }
+            return null
+          },
+          // 6. 尝试解析每个可能的 JSON 对象
           () => {
             const objects = text.match(/\{[\s\S]*?\}/g)
             if (objects) {
