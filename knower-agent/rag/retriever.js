@@ -66,7 +66,7 @@ async function findSimilarContent(accountId, queryText, platform, topK = 10) {
     // BM25 fallback
     const db = await getDb()
     const platformClause = platform ? `AND platform = ?` : ''
-    const params = platform ? [accountId, platform, topK] : [accountId, topK]
+    const params = platform ? [platform, topK] : [topK]
     const res = db.exec(
       `SELECT id, title, "desc", platform, play_count, like_count
        FROM crawl_content
