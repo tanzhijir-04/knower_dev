@@ -6,6 +6,7 @@ const AgentState = require('./state')
 const { processToolResult, buildContextFromState, suggestNextTools } = require('./processor')
 const { determineNextAction } = require('./router')
 const ExecutionTracker = require('../observability/tracker')
+const { saveCheckpoint, loadCheckpoint, clearCheckpoint, cleanupOldCheckpoints } = require('../checkpoint')
 
 const MAX_ITERATIONS = 10
 const PROMPT_CACHE_KEY = 'system_prompt'
@@ -283,13 +284,23 @@ class Agent {
   }
 
   async run(userInput, options = {}) {
-    const { onToolCall, onText } = options
+    const { onToolCall, onText, conversationId } = options
+
+    cleanupOldCheckpoints()
 
     const tracker = new ExecutionTracker()
-    const state = new AgentState()
-    state.metadata.targetPlatforms = options.platforms || ['bilibili', 'douyin', 'xiaohongshu']
+    let state = new AgentState()
+    let messages = [{ role: 'user', content: userInput }]
 
-    const messages = [{ role: 'user', content: userInput }]
+    // Restore from checkpoint if available
+    const checkpoint = loadCheckpoint(conversationId)
+    if (checkpoint) {
+      state = AgentState.deserialize(checkpoint.state)
+      messages = checkpoint.messages || messages
+      console.log(`[Agent] 从检查点恢复 conv=${conversationId} phase=${state.phase}`)
+    } else {
+      state.metadata.targetPlatforms = options.platforms || ['bilibili', 'douyin', 'xiaohongshu']
+    }
     const systemPrompt = await buildSystemPrompt({
       accountId: this.accountId,
       contentStyle: this.contentStyle,
@@ -366,6 +377,9 @@ class Agent {
             tracker.trackToolResult(block.name, result, Date.now() - toolStart)
             processToolResult(block.name, result, state)
 
+            // Save checkpoint after each tool call
+            saveCheckpoint(conversationId, state, messages)
+
             toolResults.push({
               type: 'tool_result',
               tool_use_id: block.id,
@@ -388,6 +402,7 @@ class Agent {
           break
 
         case 'done': {
+          clearCheckpoint(conversationId)
           const finalText = response.content.filter(b => b.type === 'text').map(b => b.text).join('\n')
           return finalText
         }
@@ -397,17 +412,28 @@ class Agent {
       }
     }
 
+    clearCheckpoint(conversationId)
     return '抱歉，任务执行步骤过多，已自动终止。请尝试简化你的请求。'
   }
 
   async *stream(userInput, options = {}) {
-    const { signal } = options
+    const { signal, conversationId } = options
+
+    cleanupOldCheckpoints()
 
     const tracker = new ExecutionTracker()
-    const state = new AgentState()
-    state.metadata.targetPlatforms = options.platforms || ['bilibili', 'douyin', 'xiaohongshu']
+    let state = new AgentState()
+    let messages = [{ role: 'user', content: userInput }]
 
-    const messages = [{ role: 'user', content: userInput }]
+    // Restore from checkpoint if available
+    const checkpoint = loadCheckpoint(conversationId)
+    if (checkpoint) {
+      state = AgentState.deserialize(checkpoint.state)
+      messages = checkpoint.messages || messages
+      console.log(`[Agent] 从检查点恢复 conv=${conversationId} phase=${state.phase}`)
+    } else {
+      state.metadata.targetPlatforms = options.platforms || ['bilibili', 'douyin', 'xiaohongshu']
+    }
     const systemPrompt = await buildSystemPrompt({
       accountId: this.accountId,
       contentStyle: this.contentStyle,
@@ -509,6 +535,9 @@ class Agent {
             tracker.trackToolResult(block.name, result, Date.now() - toolStart)
             processToolResult(block.name, result, state)
 
+            // Save checkpoint after each tool call
+            saveCheckpoint(conversationId, state, messages)
+
             yield { type: 'tool_result', name: block.name, result }
             yield { type: 'execution_event', events: tracker.toDisplayEvents() }
             toolResults.push({
@@ -530,6 +559,7 @@ class Agent {
       console.warn(`[Agent] 达到最大迭代次数 ${MAX_ITERATIONS}，强制终止`)
     }
 
+    clearCheckpoint(conversationId)
     yield { type: 'execution_done', summary: tracker.getSummary(), events: tracker.toDisplayEvents() }
   }
 }

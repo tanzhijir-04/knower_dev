@@ -263,7 +263,7 @@ ipcMain.handle('agent-run', async (event, script: string, platforms: string[], c
   currentAbortController = abortController
 
   try {
-    for await (const evt of agent.stream(fullPrompt, { platforms, signal: abortController.signal })) {
+    for await (const evt of agent.stream(fullPrompt, { platforms, signal: abortController.signal, conversationId })) {
       event.sender.send('agent-event', JSON.stringify(evt))
     }
     event.sender.send('agent-event', JSON.stringify({ type: 'done' }))
@@ -300,6 +300,25 @@ ipcMain.handle('agent-stop', () => {
     currentAbortController.abort()
     currentAbortController = null
   }
+  return true
+})
+
+// ============================================================
+//  检查点管理
+// ============================================================
+
+const checkpoint = require('../knower-agent/checkpoint')
+
+ipcMain.handle('checkpoint-check', async (_event, conversationId: number) => {
+  return checkpoint.hasCheckpoint(conversationId)
+})
+
+ipcMain.handle('checkpoint-list', async () => {
+  return checkpoint.listCheckpoints()
+})
+
+ipcMain.handle('checkpoint-clear', async (_event, conversationId: number) => {
+  checkpoint.clearCheckpoint(conversationId)
   return true
 })
 

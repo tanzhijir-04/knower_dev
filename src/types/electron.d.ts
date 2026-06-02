@@ -288,6 +288,9 @@ export interface ElectronAPI {
   runAgent: (script: string, platforms: string[], conversationId?: number) => Promise<void>
   stopAgent: () => Promise<boolean>
   submitAgentForm: (data: Record<string, string>) => Promise<boolean>
+  checkCheckpoint: (conversationId: number) => Promise<boolean>
+  listCheckpoints: () => Promise<{ conversationId: number; phase: string; savedAt: string; messageCount: number }[]>
+  clearCheckpoint: (conversationId: number) => Promise<boolean>
   onAgentEvent: (callback: (event: string) => void) => () => void
   // 会话
   convList?: () => Promise<Conversation[]>

@@ -145,6 +145,88 @@ function IntentFormModal({ message, fields, onSubmit, onClose }: {
   )
 }
 
+// ---- Restore Banner ----
+
+function RestoreBanner({ conversationId, onRestore, onDiscard }: {
+  conversationId: number
+  onRestore: () => void
+  onDiscard: () => void
+}) {
+  const [info, setInfo] = useState<{ phase: string; savedAt: string } | null>(null)
+  const [visible, setVisible] = useState(false)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const hoverRef = useRef(false)
+
+  useEffect(() => {
+    if (!conversationId) return
+    window.electronAPI?.checkCheckpoint(conversationId).then(has => {
+      if (has) {
+        window.electronAPI?.listCheckpoints().then(list => {
+          const match = list.find(c => c.conversationId === conversationId)
+          if (match) {
+            setInfo({ phase: match.phase, savedAt: match.savedAt })
+            setVisible(true)
+          }
+        })
+      }
+    })
+  }, [conversationId])
+
+  useEffect(() => {
+    if (!visible) return
+    const startTimer = () => {
+      timerRef.current = setTimeout(() => {
+        if (!hoverRef.current) setVisible(false)
+      }, 5000)
+    }
+    startTimer()
+    return () => { if (timerRef.current) clearTimeout(timerRef.current) }
+  }, [visible])
+
+  if (!visible || !info) return null
+
+  const phaseMap: Record<string, string> = {
+    idle: '空闲', crawling: '爬取中', analyzing: '分析中',
+    generating: '生成中', saving: '保存中', querying: '查询中',
+    suggesting: '建议中', done: '已完成',
+  }
+  const phaseLabel = phaseMap[info.phase] || info.phase
+  const savedAgo = (() => {
+    const diff = Date.now() - new Date(info.savedAt).getTime()
+    if (diff < 60000) return '刚刚'
+    if (diff < 3600000) return `${Math.floor(diff / 60000)} 分钟`
+    if (diff < 86400000) return `${Math.floor(diff / 3600000)} 小时`
+    return `${Math.floor(diff / 86400000)} 天`
+  })()
+
+  return (
+    <div
+      className="mx-auto max-w-3xl mb-3 px-4 py-3 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-center gap-3"
+      onMouseEnter={() => { hoverRef.current = true; if (timerRef.current) clearTimeout(timerRef.current) }}
+      onMouseLeave={() => { hoverRef.current = false }}
+    >
+      <span className="text-[14px]">↩️</span>
+      <div className="flex-1 min-w-0">
+        <span className="text-[12px] text-ink">
+          上次对话未完成（{phaseLabel}）· {savedAgo}前保存
+        </span>
+      </div>
+      <button
+        onClick={() => { setVisible(false); onRestore() }}
+        className="text-[11px] text-primary font-medium px-3 py-1.5 rounded-lg bg-primary/10 hover:bg-primary/20 transition-colors shrink-0"
+      >
+        继续执行
+      </button>
+      <button
+        onClick={() => { setVisible(false); onDiscard() }}
+        className="text-[11px] text-muted px-3 py-1.5 rounded-lg hover:bg-hairline transition-colors shrink-0"
+      >
+        重新开始
+      </button>
+    </div>
+  )
+}
+
 // ---- Execution Timeline ----
 
 function ExecutionTimeline({ events, summary }: {
@@ -917,6 +999,19 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
               </div>
             ) : (
               <div className="flex flex-col gap-4 p-6 max-w-3xl mx-auto">
+                {conversationId && (
+                  <RestoreBanner
+                    conversationId={conversationId}
+                    onRestore={() => {
+                      const lastMsg = messages[messages.length - 1]
+                      if (lastMsg) handleSend(lastMsg.content)
+                    }}
+                    onDiscard={() => {
+                      window.electronAPI?.clearCheckpoint(conversationId)
+                      handleNewChat()
+                    }}
+                  />
+                )}
                 {messages.map((msg) => {
                   const textParsed = msg.role === 'assistant' ? extractMaterialData(msg.content) : null
                   const toolData = (msg.toolAnalysis || msg.toolResult)

@@ -24,6 +24,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('agent-run', script, platforms, conversationId),
   stopAgent: () => ipcRenderer.invoke('agent-stop'),
   submitAgentForm: (data: Record<string, string>) => ipcRenderer.invoke('agent-submit-form', data),
+  // 检查点
+  checkCheckpoint: (conversationId: number) => ipcRenderer.invoke('checkpoint-check', conversationId),
+  listCheckpoints: () => ipcRenderer.invoke('checkpoint-list'),
+  clearCheckpoint: (conversationId: number) => ipcRenderer.invoke('checkpoint-clear', conversationId),
   onAgentEvent: (callback: (event: string) => void) => {
     const handler = (_event: unknown, data: string) => callback(data)
     ipcRenderer.on('agent-event', handler)
