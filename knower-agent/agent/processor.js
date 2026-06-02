@@ -1,4 +1,4 @@
-function processToolResult(toolName, rawResult, state) {
+function processToolResult(toolName, rawResult, state, accountId = 'default') {
   const result = typeof rawResult === 'string' ? JSON.parse(rawResult) : rawResult
 
   switch (toolName) {
@@ -13,10 +13,13 @@ function processToolResult(toolName, rawResult, state) {
       if (state.crawlData.length > 0) {
         try {
           const { indexCrawlBatch } = require('../rag/indexer')
-          indexCrawlBatch('default', state.crawlData).catch(err => {
+          indexCrawlBatch(accountId, state.crawlData).catch(err => {
             console.error('[Processor] 自动索引失败:', err.message)
           })
         } catch { /* rag module not available */ }
+        if (state.crawlData.length > 20) {
+          state.warnings.push(`数据较多（${state.crawlData.length}条），建议用 search_similar 按语义筛选重点内容`)
+        }
       }
       break
 
@@ -57,7 +60,7 @@ function processToolResult(toolName, rawResult, state) {
       if (result.id && state.script) {
         try {
           const { indexScript } = require('../rag/indexer')
-          indexScript('default', result.id, state.script).catch(err => {
+          indexScript(accountId, result.id, state.script).catch(err => {
             console.error('[Processor] 索引脚本失败:', err.message)
           })
         } catch { /* rag module not available */ }
