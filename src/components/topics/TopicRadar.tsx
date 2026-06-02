@@ -20,6 +20,7 @@ const dimensions = [
 ]
 
 export default function TopicRadar({ scores, size = 180 }: Props) {
+  if (!scores) return null
   const center = size / 2
   const maxR = size / 2 - 28
   const rings = [0.25, 0.5, 0.75, 1]
