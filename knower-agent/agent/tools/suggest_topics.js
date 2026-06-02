@@ -2,9 +2,9 @@ const { getTopContent, getRecentTrends, getMemories, getCompetitorRecentContent,
 const settings = require('../../config')
 
 const MODE_PROMPTS = {
-  trend: `基于平台趋势数据，生成追热型选题。
+  trend: `基于平台实时热点数据，生成追热型选题。
 重点：时效性、热点匹配度、快速执行。
-每个选题必须关联至少一个具体热点事件。
+每个选题必须关联至少一个具体的当前热点事件（来自"当前平台实时热点"数据）。
 标注 urgency（时效性："24h"/"3天"/"长期"）和 competitionLevel（竞争度："低"/"中"/"高"）。`,
 
   differentiated: `分析用户历史数据和平台内容分布，找到差异化方向。
@@ -105,10 +105,11 @@ module.exports = {
       let hasData = topContent.length > 0 || trends.length > 0
       log(`数据充足性: ${hasData ? '有数据' : '无数据（将使用降级模式）'}`)
 
-      // 如果没有数据，先尝试获取全网热点数据
-      if (!hasData) {
-        log('无本地数据，尝试获取全网热点...')
-        progress('正在获取平台热点...')
+      // 每次都拉取实时热点数据，确保选题时效性
+      let liveHotspots = []
+      {
+        log('拉取实时热点数据...')
+        progress('正在获取平台实时热点...')
 
         try {
           const { fetchTrending } = require('../../lib/trending')
@@ -123,25 +124,20 @@ module.exports = {
           const trendingItems = trendingData[sourceId] || []
 
           if (trendingItems.length > 0) {
-            log(`获取到 ${trendingItems.length} 条热点`)
-            // 将热点数据转换为 trends 格式
-            trends = trendingItems.slice(0, 20).map(t => ({
+            log(`获取到 ${trendingItems.length} 条实时热点`)
+            liveHotspots = trendingItems.slice(0, 15).map(t => ({
               title: t.title,
               desc: t.extra?.desc || t.extra?.info || '',
-              authorName: t.extra?.author || '',
-              playCount: t.extra?.view || 0,
-              likeCount: t.extra?.like || 0,
-              commentCount: 0,
-              createdAt: t.extra?.pubDate ? new Date(t.extra.pubDate).toISOString() : new Date().toISOString(),
+              hotValue: t.extra?.hotValue || '',
+              url: t.url || '',
             }))
-            hasData = true
           }
         } catch (err) {
-          log(`获取热点失败: ${err.message}`)
+          log(`获取实时热点失败: ${err.message}`)
         }
       }
 
-      // 如果没有数据，自动爬取一轮热点
+      // 如果没有本地数据，自动爬取一轮热点
       if (!hasData) {
         log('无本地数据，尝试自动爬取平台热点...')
         progress('正在爬取平台热点数据...')
@@ -196,6 +192,10 @@ module.exports = {
         ? memories.map(m => `- ${m.value}（${m.type}）`).join('\n')
         : '暂无偏好数据'
 
+      const liveHotspotsStr = liveHotspots.length
+        ? liveHotspots.map((h, i) => `${i + 1}. "${h.title}"${h.hotValue ? ` | 热度: ${h.hotValue}` : ''}${h.desc ? ` | ${h.desc.slice(0, 50)}` : ''}`).join('\n')
+        : '暂无实时热点'
+
       const modePrompt = MODE_PROMPTS[mode] || MODE_PROMPTS.trend
 
       const seriesHint = mode === 'series' && seriesTopic
@@ -232,6 +232,7 @@ ${trendsStr}
 ## 创作者已知偏好
 ${memoriesStr}
 ${competitorStr !== '暂无竞品数据' ? `\n## 竞品近期内容\n${competitorStr}` : ''}
+${liveHotspotsStr !== '暂无实时热点' ? `\n## 当前平台实时热点（非常重要，优先基于这些热点生成选题）\n${liveHotspotsStr}` : ''}
 ${seriesHint}
 
 ## 要求
