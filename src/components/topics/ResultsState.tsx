@@ -1,14 +1,15 @@
 import { useRef, useEffect } from 'react'
-import { CaretDown } from '@phosphor-icons/react'
+import { CaretDown, ArrowLeft } from '@phosphor-icons/react'
 import { staggerIn } from '../../lib/gsap'
 import type { TopicSuggestion } from '../../types/electron'
 
 interface Props {
   topics: TopicSuggestion[]
   onSelect: (idx: number) => void
+  onBack?: () => void
 }
 
-export default function ResultsState({ topics, onSelect }: Props) {
+export default function ResultsState({ topics, onSelect, onBack }: Props) {
   const cardRefs = useRef<HTMLDivElement[]>([])
 
   useEffect(() => {
@@ -19,6 +20,19 @@ export default function ResultsState({ topics, onSelect }: Props) {
   return (
     <div className="flex-1 overflow-y-auto px-8 py-10">
       <div className="max-w-[900px] mx-auto">
+        {/* Back button + header */}
+        {onBack && (
+          <div className="flex items-center gap-3 mb-6">
+            <button
+              onClick={onBack}
+              className="w-8 h-8 rounded-full flex items-center justify-center text-muted hover:bg-hairline transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+            <span className="text-body-sm text-muted">返回</span>
+          </div>
+        )}
+
         {/* Header caption */}
         <p className="text-caption text-muted mb-6">
           为你生成了 {topics.length} 个基于趋势的高潜力选题

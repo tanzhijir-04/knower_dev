@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { TrendUp, MagnifyingGlass, User, FileText, ArrowRight } from '@phosphor-icons/react'
+import { TrendUp, MagnifyingGlass, User, FileText, ArrowRight, ArrowLeft } from '@phosphor-icons/react'
 import type { IconProps } from '@phosphor-icons/react'
 import { staggerIn } from '../../lib/gsap'
 
@@ -9,47 +9,89 @@ interface LogEntry {
   status: 'active' | 'done'
 }
 
-const MOCK_LOGS: LogEntry[] = [
-  { icon: MagnifyingGlass, text: '正在抓取 B站/抖音 近期热点...', status: 'active' },
-  { icon: TrendUp, text: '发现 3 个高潜力方向：AI硬件落地（热度↑35%）...', status: 'done' },
-  { icon: User, text: '结合你的历史数据：你做过 3 条 AI 相关视频...', status: 'done' },
-  { icon: FileText, text: '正在分析最新爆款视频特征：短小、高密度、情绪共鸣...', status: 'done' },
+const FALLBACK_LOGS: LogEntry[] = [
+  { icon: MagnifyingGlass, text: '正在抓取平台热点数据...', status: 'active' },
+  { icon: TrendUp, text: '发现高潜力方向...', status: 'done' },
+  { icon: User, text: '结合历史数据分析...', status: 'done' },
+  { icon: FileText, text: 'AI 正在生成选题...', status: 'done' },
 ]
+
+function buildLogEntries(messages: string[], isComplete: boolean): LogEntry[] {
+  if (messages.length === 0) return FALLBACK_LOGS
+  const iconMap: Record<string, React.ComponentType<IconProps>> = {
+    '检查': MagnifyingGlass,
+    '查询': MagnifyingGlass,
+    '抓取': TrendUp,
+    '爬取': TrendUp,
+    '竞品': User,
+    'AI': FileText,
+    '解析': FileText,
+    '生成': FileText,
+    '趋势': TrendUp,
+    '偏好': User,
+    '完成': TrendUp,
+  }
+  return messages.map((msg, i) => {
+    const isLast = i === messages.length - 1
+    const matchedKey = Object.keys(iconMap).find(k => msg.includes(k))
+    return {
+      icon: matchedKey ? iconMap[matchedKey] : MagnifyingGlass,
+      text: msg,
+      status: isComplete ? 'done' : (isLast ? 'active' : 'done'),
+    }
+  })
+}
 
 interface Props {
   onSkip: () => void
+  onBack?: () => void
+  progressMessages?: string[]
+  isComplete?: boolean
 }
 
-export default function ThinkingState({ onSkip }: Props) {
+export default function ThinkingState({ onSkip, onBack, progressMessages = [], isComplete = false }: Props) {
   const logRefs = useRef<HTMLDivElement[]>([])
+  const logs = buildLogEntries(progressMessages, isComplete)
 
   useEffect(() => {
     const els = logRefs.current.filter(Boolean)
     if (els.length) staggerIn(els, { stagger: 0.15, y: 12 })
-  }, [])
+  }, [progressMessages.length])
 
   return (
     <div className="flex-1 flex items-center justify-center px-8">
       <div className="w-full max-w-[800px] bg-surface border border-hairline rounded-lg p-8">
         {/* Header */}
         <div className="flex justify-between items-center mb-10">
-          <h2 className="text-title-md text-ink">AI 思考过程</h2>
-          <span className="text-caption text-primary">正在深度解析中...</span>
+          <div className="flex items-center gap-3">
+            {onBack && (
+              <button
+                onClick={onBack}
+                className="w-8 h-8 rounded-full flex items-center justify-center text-muted hover:bg-hairline transition-colors"
+              >
+                <ArrowLeft className="w-4 h-4" />
+              </button>
+            )}
+            <h2 className="text-title-md text-ink">AI 思考过程</h2>
+          </div>
+          <span className="text-caption text-primary">
+            {isComplete ? '分析完成' : '正在深度解析中...'}
+          </span>
         </div>
 
         {/* Progress bar */}
         <div className="h-1 bg-hairline rounded-full mb-12 relative overflow-hidden">
           <div
-            className="h-full bg-primary rounded-full"
-            style={{ animation: 'grow 3s ease-in-out forwards', width: '0%' }}
+            className="h-full bg-primary rounded-full transition-all duration-500"
+            style={{ width: isComplete ? '100%' : '75%' }}
           />
         </div>
 
         {/* Log entries */}
         <div className="space-y-6">
-          {MOCK_LOGS.map((log, i) => (
+          {logs.map((log, i) => (
             <div
-              key={i}
+              key={`${i}-${log.text}`}
               ref={(el) => { logRefs.current[i] = el! }}
               className="flex items-start gap-4"
             >
@@ -61,14 +103,7 @@ export default function ThinkingState({ onSkip }: Props) {
                 </div>
               )}
               <p className={log.status === 'active' ? 'text-muted animate-pulse' : 'text-body'}>
-                {log.status === 'done' && log.text.includes('：') ? (
-                  <>
-                    {log.text.split('：')[0]}：
-                    <span className="text-primary">{log.text.split('：').slice(1).join('：')}</span>
-                  </>
-                ) : (
-                  log.text
-                )}
+                {log.text}
               </p>
             </div>
           ))}
@@ -85,12 +120,6 @@ export default function ThinkingState({ onSkip }: Props) {
           </button>
         </div>
       </div>
-
-      <style>{`
-        @keyframes grow {
-          to { width: 75%; }
-        }
-      `}</style>
     </div>
   )
 }
