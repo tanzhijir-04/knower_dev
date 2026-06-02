@@ -969,7 +969,12 @@ ipcMain.handle('topics-suggest', async (_event, platform: string) => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const suggestTool = require('../knower-agent/agent/tools/suggest_topics')
   const active = await db.getActiveAccount()
-  return await suggestTool.execute({ platform, count: 5, accountId: active?.id || 'default' })
+  const result = await suggestTool.execute({ platform, count: 5, accountId: active?.id || 'default' })
+  // 自动生成后保存历史记录
+  if (result.topics && result.topics.length > 0) {
+    await db.saveTopicHistory(platform, 'trend', result.topics, active?.id || 'default')
+  }
+  return result
 })
 
 ipcMain.handle('topics-trends', async (_event, platform: string) => {
@@ -1002,6 +1007,27 @@ ipcMain.handle('topic-to-chat', async (_event, topic: Record<string, unknown>) =
   if (mainWindow) {
     mainWindow.webContents.send('topic-to-chat-event', JSON.stringify(topic))
   }
+  return true
+})
+
+ipcMain.handle('topics-history-save', async (_event, platform: string, mode: string, topics: Record<string, unknown>[]) => {
+  const active = await db.getActiveAccount()
+  await db.saveTopicHistory(platform, mode, topics, active?.id || 'default')
+  return true
+})
+
+ipcMain.handle('topics-history-list', async (_event, platform?: string, limit?: number) => {
+  const active = await db.getActiveAccount()
+  return await db.getTopicHistory(platform || null, active?.id || 'default', limit || 50)
+})
+
+ipcMain.handle('topics-history-star', async (_event, id: number) => {
+  await db.toggleTopicHistoryStar(id)
+  return true
+})
+
+ipcMain.handle('topics-history-delete', async (_event, id: number) => {
+  await db.deleteTopicHistory(id)
   return true
 })
 

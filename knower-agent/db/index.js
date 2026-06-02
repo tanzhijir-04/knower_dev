@@ -359,6 +359,22 @@ function initTables() {
     }
   } catch { /* ignore */ }
 
+  // ============================================================
+  //  topic_history 表 — 选题生成历史
+  // ============================================================
+  db.run(`
+    CREATE TABLE IF NOT EXISTS topic_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      platform TEXT NOT NULL,
+      mode TEXT DEFAULT 'trend',
+      topics_json TEXT NOT NULL,
+      topic_count INTEGER DEFAULT 0,
+      is_starred INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT (datetime('now','localtime')),
+      account_id TEXT NOT NULL DEFAULT 'default'
+    )
+  `)
+
   // 修复头像：从 crawl_content.raw_json 回补 creators.avatar_url
   try {
     const needAvatar = db.exec(`
@@ -1060,6 +1076,55 @@ async function deleteSavedTopic(id) {
   saveDb()
 }
 
+// --- 选题历史 ---
+
+async function saveTopicHistory(platform, mode, topics, accountId = 'default') {
+  const db = await getDb()
+  db.run(
+    'INSERT INTO topic_history (platform, mode, topics_json, topic_count, account_id) VALUES (?, ?, ?, ?, ?)',
+    [platform, mode || 'trend', JSON.stringify(topics || []), (topics || []).length, accountId]
+  )
+  saveDb()
+}
+
+async function getTopicHistory(platform, accountId = 'default', limit = 50) {
+  const db = await getDb()
+  let query = 'SELECT id, platform, mode, topics_json, topic_count, is_starred, created_at FROM topic_history WHERE account_id = ?'
+  const params = [accountId]
+  if (platform) {
+    query += ' AND platform = ?'
+    params.push(platform)
+  }
+  query += ' ORDER BY id DESC LIMIT ?'
+  params.push(limit)
+  const res = db.exec(query, params)
+  if (!res.length) return []
+  return res[0].values.map((row) => ({
+    id: row[0],
+    platform: row[1],
+    mode: row[2],
+    topics: JSON.parse(row[3] || '[]'),
+    topicCount: row[4],
+    isStarred: row[5],
+    createdAt: row[6],
+  }))
+}
+
+async function toggleTopicHistoryStar(id) {
+  const db = await getDb()
+  db.run(
+    'UPDATE topic_history SET is_starred = CASE WHEN is_starred = 1 THEN 0 ELSE 1 END WHERE id = ?',
+    [id]
+  )
+  saveDb()
+}
+
+async function deleteTopicHistory(id) {
+  const db = await getDb()
+  db.run('DELETE FROM topic_history WHERE id = ?', [id])
+  saveDb()
+}
+
 async function getTopContent(platform, limit = 20, accountId = 'default') {
   const db = await getDb()
   const params = [accountId, platform || 'bili']
@@ -1392,6 +1457,7 @@ module.exports = {
   getSourceList, getVideosBySource,
   categorizeVideo, categorizeVideoBatch, getAllCategories, getUncategorizedCount,
   saveTopic, getSavedTopics, deleteSavedTopic, getTopContent, getRecentTrends,
+  saveTopicHistory, getTopicHistory, toggleTopicHistoryStar, deleteTopicHistory,
   saveVideoAnalysis, getVideoAnalysis, deleteVideoAnalysis, getRecentCrawlSummary,
   getSourceDetail, getKeywordDetail,
   createAccount, listAccounts, getActiveAccount, switchAccount, updateAccount, deleteAccount,

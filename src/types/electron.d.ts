@@ -206,6 +206,16 @@ export interface SavedTopic extends TopicSuggestion {
   createdAt: string
 }
 
+export interface TopicHistory {
+  id: number
+  platform: string
+  mode: string
+  topics: TopicSuggestion[]
+  topicCount: number
+  isStarred: number
+  createdAt: string
+}
+
 export interface TrendData {
   title: string
   desc: string
@@ -313,6 +323,10 @@ export interface ElectronAPI {
   getTopicTrends: (platform: string) => Promise<TrendData[]>
   saveTopic: (topic: Record<string, unknown>) => Promise<boolean>
   getSavedTopics: (platform?: string) => Promise<SavedTopic[]>
+  saveTopicHistory: (platform: string, mode: string, topics: TopicSuggestion[]) => Promise<void>
+  getTopicHistory: (platform?: string, limit?: number) => Promise<TopicHistory[]>
+  starTopicHistory: (id: number) => Promise<void>
+  deleteTopicHistory: (id: number) => Promise<void>
   sendTopicToChat: (topic: Record<string, unknown>) => Promise<boolean>
   onTopicToChat: (callback: (event: string) => void) => () => void
   // 竞品管理

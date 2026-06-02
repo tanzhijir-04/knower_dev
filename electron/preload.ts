@@ -80,6 +80,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getTopicTrends: (platform: string) => ipcRenderer.invoke('topics-trends', platform),
   saveTopic: (topic: Record<string, unknown>) => ipcRenderer.invoke('topics-save', topic),
   getSavedTopics: (platform?: string) => ipcRenderer.invoke('topics-saved', platform),
+  saveTopicHistory: (platform: string, mode: string, topics: Record<string, unknown>[]) =>
+    ipcRenderer.invoke('topics-history-save', platform, mode, topics),
+  getTopicHistory: (platform?: string, limit?: number) =>
+    ipcRenderer.invoke('topics-history-list', platform, limit),
+  starTopicHistory: (id: number) => ipcRenderer.invoke('topics-history-star', id),
+  deleteTopicHistory: (id: number) => ipcRenderer.invoke('topics-history-delete', id),
   sendTopicToChat: (topic: Record<string, unknown>) => ipcRenderer.invoke('topic-to-chat', topic),
   onTopicToChat: (callback: (event: string) => void) => {
     const handler = (_event: unknown, data: string) => callback(data)
