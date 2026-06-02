@@ -378,7 +378,7 @@ await db.saveVideoAnalysis(platform, sourceUid || '', result, enriched.length)
 ### MaterialCards.tsx 改动
 
 重命名为 `MaterialPanel`，改为全宽独立面板：
-- Tab 栏横排（B站 / YouTube / 抖音 / 小红书 / 字幕稿 / 拍摄清单）
+- Tab 栏横排（B站 / YouTube / 抖音 / 小红书 / 拍摄清单）
 - 每个物料字段独立一行，label + value + 复制按钮
 - 不再嵌套在气泡内
 

@@ -232,7 +232,7 @@ ipcMain.handle('agent-run', async (event, script: string, platforms: string[], c
   }
 
   // 意图检测：只在用户确实要生成物料时才包装 prompt
-  const materialsKw = ['脚本', '物料', '文案', '标题', '标签', '简介', '字幕', '封面', '生成', '发布']
+  const materialsKw = ['脚本', '物料', '文案', '标题', '标签', '简介', '封面', '生成', '发布']
   const isMaterialsIntent = materialsKw.some(kw => script.includes(kw))
   if (isMaterialsIntent) {
     prompt = `请帮我分析以下脚本，并为 ${platforms.join('、')} 平台生成发布物料：\n\n${prompt}`

@@ -96,16 +96,6 @@ const INTENT_PATTERNS: IntentPattern[] = [
     promptTemplate: '请帮我分析以下脚本，并为{platforms}生成发布物料：\n\n{script}',
   },
   {
-    id: 'subtitle',
-    name: '生成字幕',
-    icon: 'subtitles',
-    keywords: ['生成字幕', '字幕稿', 'SRT', '生成字幕文件'],
-    fields: [
-      { name: 'script', label: '口播稿内容', type: 'textarea', required: true, placeholder: '粘贴你的口播稿...' },
-    ],
-    promptTemplate: '请为以下口播稿生成 SRT 格式字幕文件。要求：标准 SRT 格式，中文语速每秒 3-4 字，每条字幕不超过 20 字，在自然断句处分割。\n\n口播稿：\n{script}',
-  },
-  {
     id: 'title_optimize',
     name: '标题优化',
     icon: 'title',
@@ -466,7 +456,6 @@ const handleAgentFormSubmit = async (data: Record<string, string>) => {
 
 - [ ] 输入"分析B站UP主"→ 弹出表单（平台选择 + UID 输入）
 - [ ] 输入"帮我生成物料"→ 弹出表单（平台选择 + 脚本输入）
-- [ ] 输入"生成字幕"→ 弹出表单（口播稿输入）
 - [ ] 输入"优化标题"→ 弹出表单（当前标题 + 平台选择）
 - [ ] 输入"创作灵感"→ 弹出表单（创作方向 + 数量选择）
 - [ ] 表单有必填校验，空值提交时显示红色提示

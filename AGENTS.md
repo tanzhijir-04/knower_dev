@@ -4,7 +4,7 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 ## 项目概述
 
-知更 Knower — 面向个人视频创作者（B站/抖音/小红书）的本地 AI 桌面工作流客户端。帮助从选题到发布，生成多平台发布物料（脚本、标题、标签、封面文案、字幕稿等）。用户自带 API key，数据全在本地，不经过第三方服务器。
+知更 Knower — 面向个人视频创作者（B站/抖音/小红书）的本地 AI 桌面工作流客户端。帮助从选题到发布，生成多平台发布物料（脚本、标题、标签、封面文案等）。用户自带 API key，数据全在本地，不经过第三方服务器。
 
 ## 构建命令
 

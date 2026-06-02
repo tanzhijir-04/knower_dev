@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概述
 
-知更 Knower — 面向个人视频创作者（B站/抖音/小红书）的本地 AI 桌面工作流客户端。帮助从选题到发布，生成多平台发布物料（脚本、标题、标签、封面文案、字幕稿等）。用户自带 API key，数据全在本地，不经过第三方服务器。
+知更 Knower — 面向个人视频创作者（B站/抖音/小红书）的本地 AI 桌面工作流客户端。帮助从选题到发布，生成多平台发布物料（脚本、标题、标签、封面文案等）。用户自带 API key，数据全在本地，不经过第三方服务器。
 
 ## 构建命令
 
@@ -121,3 +121,9 @@ const result = await window.electronAPI.runCrawler('bili', '关键词', { maxNot
 提交格式：`type(scope): 描述`
 - type: feat / fix / refactor / style / docs / chore
 - 示例: `feat(chat): 接入 streaming API`
+
+### 写代码的原则
+
+- 有不懂不要瞎猜，直接问我。
+- 只改我们刚才说到的部分，不要影响其他代码，不要做优化，不要做额外功能。
+- 代码尽量简洁。最后结果导向可验证。
