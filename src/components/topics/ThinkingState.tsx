@@ -17,7 +17,8 @@ const FALLBACK_LOGS: LogEntry[] = [
 ]
 
 function buildLogEntries(messages: string[], isComplete: boolean): LogEntry[] {
-  if (messages.length === 0) return FALLBACK_LOGS
+  const clean = messages.filter(Boolean)
+  if (clean.length === 0) return FALLBACK_LOGS
   const iconMap: Record<string, React.ComponentType<IconProps>> = {
     '检查': MagnifyingGlass,
     '查询': MagnifyingGlass,
@@ -31,7 +32,7 @@ function buildLogEntries(messages: string[], isComplete: boolean): LogEntry[] {
     '偏好': User,
     '完成': TrendUp,
   }
-  return messages.map((msg, i) => {
+  return clean.map((msg, i) => {
     const isLast = i === messages.length - 1
     const matchedKey = Object.keys(iconMap).find(k => msg.includes(k))
     return {
