@@ -5,6 +5,7 @@ const { getCached, setCache } = require('./cache')
 const AgentState = require('./state')
 const { processToolResult, buildContextFromState, suggestNextTools } = require('./processor')
 const { determineNextAction } = require('./router')
+const ExecutionTracker = require('../observability/tracker')
 
 const MAX_ITERATIONS = 10
 const PROMPT_CACHE_KEY = 'system_prompt'
@@ -284,6 +285,7 @@ class Agent {
   async run(userInput, options = {}) {
     const { onToolCall, onText } = options
 
+    const tracker = new ExecutionTracker()
     const state = new AgentState()
     state.metadata.targetPlatforms = options.platforms || ['bilibili', 'douyin', 'xiaohongshu']
 
@@ -335,6 +337,9 @@ class Agent {
           for (const block of nextAction.tools) {
             if (onToolCall) onToolCall(block.name, block.input)
 
+            tracker.trackToolCall(block.name, block.input)
+            const toolStart = Date.now()
+
             const tool = tools.find(t => t.name === block.name)
             let result
 
@@ -358,6 +363,7 @@ class Agent {
               result = { error: `Unknown tool: ${block.name}` }
             }
 
+            tracker.trackToolResult(block.name, result, Date.now() - toolStart)
             processToolResult(block.name, result, state)
 
             toolResults.push({
@@ -397,6 +403,7 @@ class Agent {
   async *stream(userInput, options = {}) {
     const { signal } = options
 
+    const tracker = new ExecutionTracker()
     const state = new AgentState()
     state.metadata.targetPlatforms = options.platforms || ['bilibili', 'douyin', 'xiaohongshu']
 
@@ -468,6 +475,9 @@ class Agent {
             const input = finalEvent.toolUseInputs[block.id]?.input || block.input
             yield { type: 'tool_call', name: block.name, input }
 
+            tracker.trackToolCall(block.name, input)
+            const toolStart = Date.now()
+
             const tool = tools.find(t => t.name === block.name)
             let result
             if (tool) {
@@ -496,9 +506,11 @@ class Agent {
               result = { error: `Unknown tool: ${block.name}` }
             }
 
+            tracker.trackToolResult(block.name, result, Date.now() - toolStart)
             processToolResult(block.name, result, state)
 
             yield { type: 'tool_result', name: block.name, result }
+            yield { type: 'execution_event', events: tracker.toDisplayEvents() }
             toolResults.push({
               type: 'tool_result',
               tool_use_id: block.id,
@@ -517,6 +529,8 @@ class Agent {
       yield { type: 'text', text: '\n\n抱歉，任务执行步骤过多，已自动终止。' }
       console.warn(`[Agent] 达到最大迭代次数 ${MAX_ITERATIONS}，强制终止`)
     }
+
+    yield { type: 'execution_done', summary: tracker.getSummary(), events: tracker.toDisplayEvents() }
   }
 }
 

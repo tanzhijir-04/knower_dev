@@ -145,6 +145,72 @@ function IntentFormModal({ message, fields, onSubmit, onClose }: {
   )
 }
 
+// ---- Execution Timeline ----
+
+function ExecutionTimeline({ events, summary }: {
+  events: import('../types/electron').ExecutionEvent[]
+  summary?: { toolCalls: number; successes: number; failures: number; totalTimeMs: number }
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const contentRef = useRef<HTMLDivElement>(null)
+
+  if (!events || events.length === 0) return null
+
+  const totalSteps = events.length
+  const totalTime = summary?.totalTimeMs
+    ? (summary.totalTimeMs / 1000).toFixed(1)
+    : events.length > 0
+      ? ((events[events.length - 1].time || 0) / 1000).toFixed(1)
+      : '0'
+
+  return (
+    <div className="mt-2 mb-1">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center gap-1.5 text-[11px] text-muted hover:text-ink transition-colors px-2 py-1 rounded-md hover:bg-hairline"
+      >
+        <span className={`transition-transform duration-200 ${expanded ? 'rotate-90' : ''}`}>▶</span>
+        <span>执行追踪 ({totalSteps} 步, {totalTime}s)</span>
+        {summary && summary.failures > 0 && (
+          <span className="text-semantic-error">· {summary.failures} 失败</span>
+        )}
+      </button>
+      <div
+        ref={contentRef}
+        className="overflow-hidden transition-all duration-200 ease-in-out"
+        style={{ maxHeight: expanded ? `${contentRef.current?.scrollHeight || 500}px` : '0px' }}
+      >
+        <div className="mt-1 bg-surface-strong rounded-lg border border-hairline overflow-hidden">
+          {events.map((evt, i) => (
+            <div
+              key={i}
+              className={`flex items-center gap-2 px-3 py-2 text-[12px] ${
+                evt.status === 'error' ? 'border-l-2 border-l-semantic-error bg-semantic-error/5' : ''
+              } ${i < events.length - 1 ? 'border-b border-hairline' : ''}`}
+            >
+              <span className="text-[14px] shrink-0">{evt.icon}</span>
+              <span className={`flex-1 min-w-0 truncate ${
+                evt.status === 'error' ? 'text-semantic-error' : 'text-ink'
+              }`}>
+                {evt.text}
+              </span>
+              {evt.detail && evt.status !== 'error' && (
+                <span className="text-[11px] text-muted truncate max-w-[200px]">{evt.detail}</span>
+              )}
+              {evt.status === 'error' && evt.detail && (
+                <span className="text-[11px] text-semantic-error truncate max-w-[200px]">{evt.detail}</span>
+              )}
+              <span className="text-[11px] text-muted-soft font-mono shrink-0 tabular-nums">
+                {evt.durationMs ? `${evt.durationMs}ms` : ''}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ---- Main Component ----
 
 export default function ChatView({ pendingTopic, onTopicConsumed, initialConversationId, onConversationOpened, onNavigate, onConversationChange }: Props) {
@@ -167,6 +233,7 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
   const [editingMsgId, setEditingMsgId] = useState<string | null>(null)
   const [editingContent, setEditingContent] = useState('')
   const [isDragging, setIsDragging] = useState(false)
+  const [currentToolName, setCurrentToolName] = useState<string | null>(null)
   const toolDataRef = useRef<{ analysis?: Record<string, unknown>; result?: Record<string, unknown> }>({})
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -309,6 +376,7 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
             suggest_topics: '生成选题建议...',
           }
           setStatus(labels[event.name] || `处理中...`)
+          setCurrentToolName(labels[event.name] || `正在执行 ${event.name}...`)
         } else if (event.type === 'tool_result') {
           setMessages((prev) => {
             const last = prev[prev.length - 1]
@@ -322,9 +390,51 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
             }
             return prev
           })
+          setCurrentToolName(null)
           setStatus('')
         } else if (event.type === 'tool_progress') {
           setStatus(event.message || '')
+        } else if (event.type === 'execution_event') {
+          // Update current tool name for real-time indicator
+          const lastEvent = event.events?.[event.events.length - 1]
+          if (lastEvent?.status === 'running') {
+            const toolName = lastEvent.text?.replace('调用 ', '') || ''
+            const toolLabels: Record<string, string> = {
+              crawl_data: '正在爬取数据...',
+              crawl_data_batch: '正在批量爬取...',
+              query_data: '正在查询数据...',
+              analyze_script: '正在分析脚本...',
+              expand_script: '正在生成物料...',
+              suggest_topics: '正在生成选题...',
+              save_result: '正在保存结果...',
+              search_similar: '正在语义检索...',
+              request_user_input: '等待用户输入...',
+            }
+            setCurrentToolName(toolLabels[toolName] || `正在执行 ${toolName}...`)
+          } else {
+            setCurrentToolName(null)
+          }
+          // Append execution events to current message
+          setMessages((prev) => {
+            const last = prev[prev.length - 1]
+            if (last && last.id === assistantIdRef.current) {
+              return [...prev.slice(0, -1), { ...last, executionEvents: event.events }]
+            }
+            return prev
+          })
+        } else if (event.type === 'execution_done') {
+          setMessages((prev) => {
+            const last = prev[prev.length - 1]
+            if (last && last.id === assistantIdRef.current) {
+              return [...prev.slice(0, -1), {
+                ...last,
+                executionEvents: event.events,
+                executionSummary: event.summary,
+              }]
+            }
+            return prev
+          })
+          setCurrentToolName(null)
         } else if (event.type === 'form_request') {
           setAgentFormRequest({
             message: event.message,
@@ -653,6 +763,13 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
   // ---- Input Area (shared between welcome and chat) ----
   const inputArea = (
     <div className="px-4 pb-4 shrink-0 max-w-3xl mx-auto w-full relative">
+      {/* Real-time execution indicator */}
+      {currentToolName && (
+        <div className="mb-2 flex items-center gap-2 px-3 py-2 bg-primary/5 border border-primary/10 rounded-lg">
+          <span className="inline-block w-2 h-2 bg-primary rounded-full animate-pulse" />
+          <span className="text-[12px] text-primary">{currentToolName}</span>
+        </div>
+      )}
       <input
         ref={fileInputRef}
         type="file"
@@ -853,6 +970,9 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
                               )
                             })}
                           </div>
+                        )}
+                        {msg.executionEvents && msg.executionEvents.length > 0 && (
+                          <ExecutionTimeline events={msg.executionEvents} summary={msg.executionSummary} />
                         )}
 
                         {msg.role === 'assistant' ? (

@@ -36,6 +36,15 @@ export interface ToolCallInfo {
   endTime?: number
 }
 
+export interface ExecutionEvent {
+  icon: string
+  text: string
+  detail: string
+  time: number
+  status: 'running' | 'success' | 'error' | 'info'
+  durationMs?: number
+}
+
 export interface Message {
   id: string
   role: 'user' | 'assistant'
@@ -44,6 +53,8 @@ export interface Message {
   toolCalls?: ToolCallInfo[]
   toolAnalysis?: Record<string, unknown>
   toolResult?: Record<string, unknown>
+  executionEvents?: ExecutionEvent[]
+  executionSummary?: { toolCalls: number; successes: number; failures: number; totalTimeMs: number }
 }
 
 export interface CrawlTask {
