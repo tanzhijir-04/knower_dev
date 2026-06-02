@@ -9,6 +9,15 @@ function processToolResult(toolName, rawResult, state) {
       if (state.crawlData.length === 0) {
         state.warnings.push(`${result.platform} 平台暂无数据`)
       }
+      // Auto-index crawled content for RAG
+      if (state.crawlData.length > 0) {
+        try {
+          const { indexCrawlBatch } = require('../rag/indexer')
+          indexCrawlBatch('default', state.crawlData).catch(err => {
+            console.error('[Processor] 自动索引失败:', err.message)
+          })
+        } catch { /* rag module not available */ }
+      }
       break
 
     case 'crawl_data_batch':
@@ -44,6 +53,15 @@ function processToolResult(toolName, rawResult, state) {
     case 'save_result':
       state.metadata.saved = true
       state.metadata.savedId = result.id
+      // Auto-index saved script for RAG
+      if (result.id && state.script) {
+        try {
+          const { indexScript } = require('../rag/indexer')
+          indexScript('default', result.id, state.script).catch(err => {
+            console.error('[Processor] 索引脚本失败:', err.message)
+          })
+        } catch { /* rag module not available */ }
+      }
       break
 
     case 'request_user_input':

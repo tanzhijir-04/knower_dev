@@ -16,6 +16,7 @@ interface Settings {
   scriptDuration: string
   defaultLanguage: string
   defaultCrawlCount: number
+  embeddingModel: string
 }
 
 const PROVIDERS = [
@@ -253,6 +254,7 @@ export default function SettingsView() {
     scriptDuration: '1-3分钟',
     defaultLanguage: '简体中文',
     defaultCrawlCount: 20,
+    embeddingModel: 'text-embedding-3-small',
   })
 
   const [showApiKey, setShowApiKey] = useState(false)
@@ -283,6 +285,7 @@ export default function SettingsView() {
           scriptDuration: (all.scriptDuration as string) || s.scriptDuration,
           defaultLanguage: (all.defaultLanguage as string) || s.defaultLanguage,
           defaultCrawlCount: typeof all.defaultCrawlCount === 'number' ? all.defaultCrawlCount : s.defaultCrawlCount,
+          embeddingModel: (all.embeddingModel as string) || s.embeddingModel,
         }))
       }
     })
@@ -357,6 +360,7 @@ export default function SettingsView() {
       ['scriptDuration', settings.scriptDuration],
       ['defaultLanguage', settings.defaultLanguage],
       ['defaultCrawlCount', settings.defaultCrawlCount],
+      ['embeddingModel', settings.embeddingModel],
     ]
     for (const [k, v] of entries) await api.setStore(k, v)
     setSaved(true)
@@ -502,7 +506,42 @@ export default function SettingsView() {
         </section>
 
         {/* ============================================================ */}
-        {/*  2. 创作偏好                                                  */}
+        {/*  2. RAG 语义检索 (Embedding)                                  */}
+        {/* ============================================================ */}
+        <section>
+          <h2 className="text-xs uppercase tracking-wider text-muted mb-4">语义检索 (RAG)</h2>
+          <div className="card-sm space-y-4">
+            <p className="text-[11px] text-muted">
+              配置 Embedding 模型用于语义搜索历史脚本和爬取数据。支持所有兼容 OpenAI Embedding API 的服务。
+            </p>
+
+            {/* Embedding Model */}
+            <div>
+              <label className="block text-xs text-muted mb-1.5">Embedding 模型</label>
+              <input
+                type="text"
+                value={settings.embeddingModel}
+                onChange={e => update('embeddingModel', e.target.value)}
+                placeholder="text-embedding-3-small"
+                className={inputCls}
+              />
+              <p className="text-[11px] text-muted mt-1">
+                默认 text-embedding-3-small。如使用 Ollama 等本地服务，填对应模型名
+              </p>
+            </div>
+
+            <div className="bg-surface/50 rounded-lg p-3 border border-hairline">
+              <p className="text-[11px] text-muted leading-relaxed">
+                <span className="font-medium text-ink">说明：</span>语义检索功能使用上方配置的 API Key 和 Base URL 调用 Embedding 接口。
+                如果未配置 API Key，RAG 功能将自动降级为关键词搜索（BM25）。
+                向量数据存储在本地 <code className="text-[10px] bg-surface px-1 py-0.5 rounded">.vectra/</code> 目录中。
+              </p>
+            </div>
+          </div>
+        </section>
+
+        {/* ============================================================ */}
+        {/*  3. 创作偏好                                                  */}
         {/* ============================================================ */}
         <section>
           <h2 className="text-xs uppercase tracking-wider text-muted mb-4">创作偏好</h2>
@@ -576,7 +615,7 @@ export default function SettingsView() {
         </section>
 
         {/* ============================================================ */}
-        {/*  3. 数据管理                                                  */}
+        {/*  4. 数据管理                                                  */}
         {/* ============================================================ */}
         <section>
           <h2 className="text-xs uppercase tracking-wider text-muted mb-4">数据管理</h2>
@@ -636,7 +675,7 @@ export default function SettingsView() {
         </section>
 
         {/* ============================================================ */}
-        {/*  4. 爬虫设置                                                  */}
+        {/*  5. 爬虫设置                                                  */}
         {/* ============================================================ */}
         <section>
           <h2 className="text-xs uppercase tracking-wider text-muted mb-4">爬虫设置</h2>
@@ -686,7 +725,7 @@ export default function SettingsView() {
         </section>
 
         {/* ============================================================ */}
-        {/*  5. 全网热点数据源                                             */}
+        {/*  6. 全网热点数据源                                             */}
         {/* ============================================================ */}
         <section>
           <h2 className="text-xs uppercase tracking-wider text-muted mb-4">全网热点数据源</h2>
@@ -743,7 +782,7 @@ export default function SettingsView() {
         </section>
 
         {/* ============================================================ */}
-        {/*  6. 创作者管理                                                */}
+        {/*  7. 创作者管理                                                */}
         {/* ============================================================ */}
         <section>
           <h2 className="text-xs uppercase tracking-wider text-muted mb-4">创作者管理</h2>
@@ -753,7 +792,7 @@ export default function SettingsView() {
         </section>
 
         {/* ============================================================ */}
-        {/*  7. 关于                                                      */}
+        {/*  8. 关于                                                      */}
         {/* ============================================================ */}
         <section>
           <h2 className="text-xs uppercase tracking-wider text-muted mb-4">关于</h2>

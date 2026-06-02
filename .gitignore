@@ -19,6 +19,9 @@ assets/icon.icns
 # User data (SQLite database)
 knower-agent/knower.db
 
+# RAG vector data
+knower-agent/.vectra/
+
 # Logs
 *.log
 npm-debug.log*

@@ -379,6 +379,7 @@ function initTables() {
     'CREATE INDEX IF NOT EXISTS idx_topic_history_account_id ON topic_history(account_id)',
     'CREATE INDEX IF NOT EXISTS idx_creators_account_id ON creators(account_id)',
     'CREATE INDEX IF NOT EXISTS idx_video_analyses_platform ON video_analyses(platform, source_uid, account_id)',
+    'CREATE INDEX IF NOT EXISTS idx_embeddings_account ON embeddings(account_id, source_type)',
   ]
   for (const idx of indexes) {
     try { db.run(idx) } catch { /* ignore */ }
@@ -397,6 +398,21 @@ function initTables() {
       is_starred INTEGER DEFAULT 0,
       created_at DATETIME DEFAULT (datetime('now','localtime')),
       account_id TEXT NOT NULL DEFAULT 'default'
+    )
+  `)
+
+  // ============================================================
+  //  embeddings 表 — RAG 向量索引元数据
+  // ============================================================
+  db.run(`
+    CREATE TABLE IF NOT EXISTS embeddings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      account_id TEXT NOT NULL DEFAULT 'default',
+      source_type TEXT NOT NULL,
+      source_id INTEGER NOT NULL,
+      content_hash TEXT NOT NULL,
+      created_at DATETIME DEFAULT (datetime('now','localtime')),
+      UNIQUE(source_type, source_id)
     )
   `)
 

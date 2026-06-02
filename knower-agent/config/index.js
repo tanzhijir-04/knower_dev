@@ -27,6 +27,7 @@ function loadSettings() {
           model: raw.model || 'claude-sonnet-4-20250514',
           baseUrl: raw.baseUrl || '',
           provider: raw.apiProvider || 'claude',
+          embeddingModel: raw.embeddingModel || 'text-embedding-3-small',
         }
       }
     }
@@ -39,6 +40,7 @@ function loadSettings() {
     model: process.env.MODEL || 'claude-sonnet-4-20250514',
     baseUrl: '',
     provider: 'claude',
+    embeddingModel: 'text-embedding-3-small',
   }
 }
 
