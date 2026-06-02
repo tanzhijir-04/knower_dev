@@ -8,11 +8,6 @@ const __dirname = path.dirname(__filename)
 const require = createRequire(import.meta.url)
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const Agent = require('../knower-agent/agent/core')
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const { createClient } = require('../knower-agent/llm')
-
-// eslint-disable-next-line @typescript-eslint/no-require-imports
 const db = require('../knower-agent/db')
 
 const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
@@ -97,6 +92,24 @@ ipcMain.handle('window-maximize', () => {
 ipcMain.handle('window-close', () => mainWindow?.close())
 
 // ============================================================
+//  IPC 安全包装器
+// ============================================================
+
+function safeIpcHandler<T extends unknown[]>(
+  handler: (event: Electron.IpcMainInvokeEvent, ...args: T) => Promise<unknown> | unknown
+) {
+  return async (event: Electron.IpcMainInvokeEvent, ...args: T) => {
+    try {
+      return await handler(event, ...args)
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err)
+      console.error(`[IPC] handler error:`, message)
+      throw message
+    }
+  }
+}
+
+// ============================================================
 //  账号管理
 // ============================================================
 
@@ -167,7 +180,7 @@ ipcMain.handle('set-store', (_event, key: string, value: unknown) => {
 // ============================================================
 
 let currentAbortController: AbortController | null = null
-let currentAgent: InstanceType<typeof Agent> | null = null
+let currentAgent: Record<string, unknown> | null = null
 let agentLock = false
 
 ipcMain.handle('agent-run', async (event, script: string, platforms: string[], conversationId?: number) => {
@@ -176,24 +189,26 @@ ipcMain.handle('agent-run', async (event, script: string, platforms: string[], c
   }
   agentLock = true
 
-  const settings = readSettings()
-  const activeAccount = await db.getActiveAccount()
-  const agent = new Agent({
-    apiKey: settings.apiKey as string,
-    model: (settings.model as string) || 'claude-sonnet-4-20250514',
-    baseUrl: (settings.baseUrl as string) || '',
-    provider: (settings.apiProvider as string) || 'claude',
-    temperature: typeof settings.temperature === 'number' ? settings.temperature : 0.7,
-    maxTokens: typeof settings.maxTokens === 'number' ? settings.maxTokens : 4096,
-    contentStyle: (settings.contentStyle as string) || '',
-    scriptDuration: (settings.scriptDuration as string) || '',
-    defaultLanguage: (settings.defaultLanguage as string) || '',
-    accountId: activeAccount?.id || 'default',
-    accountName: activeAccount?.name || '',
-    accountPlatform: activeAccount?.platform || '',
-    accountUid: activeAccount?.uid || '',
-  })
-  currentAgent = agent
+  try {
+    const Agent = require('../knower-agent/agent/core')
+    const settings = readSettings()
+    const activeAccount = await db.getActiveAccount()
+    const agent = new Agent({
+      apiKey: settings.apiKey as string,
+      model: (settings.model as string) || 'claude-sonnet-4-20250514',
+      baseUrl: (settings.baseUrl as string) || '',
+      provider: (settings.apiProvider as string) || 'claude',
+      temperature: typeof settings.temperature === 'number' ? settings.temperature : 0.7,
+      maxTokens: typeof settings.maxTokens === 'number' ? settings.maxTokens : 4096,
+      contentStyle: (settings.contentStyle as string) || '',
+      scriptDuration: (settings.scriptDuration as string) || '',
+      defaultLanguage: (settings.defaultLanguage as string) || '',
+      accountId: activeAccount?.id || 'default',
+      accountName: activeAccount?.name || '',
+      accountPlatform: activeAccount?.platform || '',
+      accountUid: activeAccount?.uid || '',
+    })
+    currentAgent = agent
 
   // 获取最近对话历史（最多 5 轮）
   let historyContext = ''
@@ -262,6 +277,12 @@ ipcMain.handle('agent-run', async (event, script: string, platforms: string[], c
   } finally {
     currentAbortController = null
     currentAgent = null
+    agentLock = false
+  }
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err)
+    console.error('[Agent] 启动失败:', message)
+    try { event.sender.send('agent-event', JSON.stringify({ type: 'error', message })) } catch {}
     agentLock = false
   }
 })
@@ -345,12 +366,10 @@ ipcMain.handle('search-messages', async (_event, query: string) => {
 //  爬虫
 // ============================================================
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const { runCrawler } = require('../knower-agent/lib/crawler')
-
 ipcMain.handle('crawler-run', async (event, platform: string, keywords: string, options: Record<string, unknown> = {}) => {
   event.sender.send('crawler-event', JSON.stringify({ type: 'started', platform }))
   try {
+    const { runCrawler } = require('../knower-agent/lib/crawler')
     const result = await runCrawler(platform, keywords, options, (msg: string) => {
       event.sender.send('crawler-event', JSON.stringify({ type: 'progress', message: msg }))
     })
@@ -447,7 +466,8 @@ ipcMain.handle('keyword-detail', async (_event, keyword: string, platform?: stri
 // ============================================================
 
 ipcMain.handle('clean-old-data', async () => {
-  await db.cleanOldData()
+  const active = await db.getActiveAccount()
+  await db.cleanOldData(active?.id || 'default')
   return true
 })
 
@@ -465,9 +485,19 @@ const PROVIDER_DEFAULTS: Record<string, string> = {
 ipcMain.handle('test-connection', async (_event, settings: {
   provider: string; apiKey: string; baseUrl: string; model: string;
 }) => {
-  // 归一化 base URL：去掉尾部斜杠和 /v1 后缀，再统一拼接
+  // SSRF 保护：只允许连接到已知 provider 域名或用户配置的域名
   const raw = settings.baseUrl || PROVIDER_DEFAULTS[settings.provider] || ''
   const base = raw.replace(/\/+$/, '').replace(/\/v1$/, '')
+
+  try {
+    const url = new URL(base)
+    if (!['https:', 'http:'].includes(url.protocol)) {
+      return { ok: false, msg: '只支持 HTTP/HTTPS 协议' }
+    }
+  } catch {
+    return { ok: false, msg: '无效的 URL 格式' }
+  }
+
   const isClaude = settings.provider === 'claude'
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   let endpoint: string
@@ -484,12 +514,23 @@ ipcMain.handle('test-connection', async (_event, settings: {
     body = { model: settings.model, max_tokens: 32, messages: [{ role: 'user', content: 'ping' }] }
   }
 
-  const res = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(body) })
-  if (res.ok) {
-    return { ok: true, msg: '连接成功' }
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 10000)
+  try {
+    const res = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(body), signal: controller.signal })
+    clearTimeout(timeout)
+    if (res.ok) {
+      return { ok: true, msg: '连接成功' }
+    }
+    const err = await res.text().catch(() => res.statusText)
+    return { ok: false, msg: `错误 ${res.status}: ${err.slice(0, 120)}` }
+  } catch (err: unknown) {
+    clearTimeout(timeout)
+    if (err instanceof Error && err.name === 'AbortError') {
+      return { ok: false, msg: '连接超时（10s）' }
+    }
+    return { ok: false, msg: `连接失败: ${err instanceof Error ? err.message : String(err)}` }
   }
-  const err = await res.text().catch(() => res.statusText)
-  return { ok: false, msg: `错误 ${res.status}: ${err.slice(0, 120)}` }
 })
 
 // ============================================================
@@ -794,6 +835,7 @@ ${videoDataStr}
 3. 只输出 JSON，不要任何其他文字`
 
   // 调用 LLM（通过适配器）
+  const { createClient } = require('../knower-agent/llm')
   const llmClient = createClient({
     apiKey: settings.apiKey as string,
     model: (settings.model as string) || 'claude-sonnet-4-20250514',
@@ -907,7 +949,8 @@ ${videoList}
 - 不要输出标题、解释或其他内容
 - 如果某个视频无法判断，分类为"其他"`
 
-  const catClient = createClient({
+  const { createClient: createLlmClient } = require('../knower-agent/llm')
+  const catClient = createLlmClient({
     apiKey: settings.apiKey as string,
     model: (settings.model as string) || 'claude-sonnet-4-20250514',
     baseUrl: (settings.baseUrl as string) || '',
@@ -1035,18 +1078,17 @@ ipcMain.handle('topics-history-delete', async (_event, id: number) => {
 //  打开外部链接
 // ============================================================
 ipcMain.handle('open-url', async (_event, url: string) => {
-  if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
-    await shell.openExternal(url)
-  }
+  try {
+    if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
+      await shell.openExternal(url)
+    }
+  } catch { /* ignore */ }
   return true
 })
 
 // ============================================================
 //  全网热点
 // ============================================================
-
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const trending = require('../knower-agent/lib/trending')
 
 const TRENDING_DEFAULTS = { sources: ['bilibili', 'douyin', 'weibo'], order: ['bilibili', 'douyin', 'weibo'], lastRefresh: 0 }
 
@@ -1067,6 +1109,7 @@ function saveTrendingConfig(config: { sources: string[]; order: string[]; lastRe
 }
 
 ipcMain.handle('trending-fetch', async (_event, platforms?: string[]) => {
+  const trending = require('../knower-agent/lib/trending')
   const config = getTrendingConfig()
   const sources = platforms || config.sources || TRENDING_DEFAULTS.sources
   const result = await trending.fetchTrending(sources)
@@ -1074,6 +1117,7 @@ ipcMain.handle('trending-fetch', async (_event, platforms?: string[]) => {
 })
 
 ipcMain.handle('trending-sources', async () => {
+  const trending = require('../knower-agent/lib/trending')
   const config = getTrendingConfig()
   return { sources: trending.SOURCES, config }
 })

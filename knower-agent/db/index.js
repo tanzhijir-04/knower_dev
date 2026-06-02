@@ -17,6 +17,7 @@ async function getDb() {
     } else {
       db = new SQL.Database()
     }
+    db.run('PRAGMA foreign_keys = ON')
     initTables()
   }
   return db
@@ -131,7 +132,8 @@ function initTables() {
       evidence TEXT,
       weight REAL NOT NULL DEFAULT 0.5,
       created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
+      updated_at TEXT NOT NULL,
+      UNIQUE(account_id, key)
     )
   `)
   db.run(`
@@ -288,7 +290,8 @@ function initTables() {
       nickname TEXT NOT NULL,
       account_id TEXT NOT NULL DEFAULT 'default',
       last_checked_at TEXT,
-      created_at TEXT DEFAULT (datetime('now','localtime'))
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      UNIQUE(platform, user_id, account_id)
     )
   `)
   // 迁移: competitors 表加 last_checked_at
@@ -360,6 +363,28 @@ function initTables() {
   } catch { /* ignore */ }
 
   // ============================================================
+  //  索引：加速常用查询
+  // ============================================================
+  const indexes = [
+    'CREATE INDEX IF NOT EXISTS idx_crawl_content_task_id ON crawl_content(task_id)',
+    'CREATE INDEX IF NOT EXISTS idx_crawl_content_platform ON crawl_content(platform)',
+    'CREATE INDEX IF NOT EXISTS idx_crawl_content_source_uid ON crawl_content(source_uid)',
+    'CREATE INDEX IF NOT EXISTS idx_crawl_content_account ON crawl_content(task_id, platform)',
+    'CREATE INDEX IF NOT EXISTS idx_crawl_tasks_account_id ON crawl_tasks(account_id)',
+    'CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id)',
+    'CREATE INDEX IF NOT EXISTS idx_conversations_account_id ON conversations(account_id)',
+    'CREATE INDEX IF NOT EXISTS idx_scripts_account_id ON scripts(account_id)',
+    'CREATE INDEX IF NOT EXISTS idx_memories_account_id ON memories(account_id)',
+    'CREATE INDEX IF NOT EXISTS idx_saved_topics_account_id ON saved_topics(account_id)',
+    'CREATE INDEX IF NOT EXISTS idx_topic_history_account_id ON topic_history(account_id)',
+    'CREATE INDEX IF NOT EXISTS idx_creators_account_id ON creators(account_id)',
+    'CREATE INDEX IF NOT EXISTS idx_video_analyses_platform ON video_analyses(platform, source_uid, account_id)',
+  ]
+  for (const idx of indexes) {
+    try { db.run(idx) } catch { /* ignore */ }
+  }
+
+  // ============================================================
   //  topic_history 表 — 选题生成历史
   // ============================================================
   db.run(`
@@ -426,9 +451,9 @@ async function getScript(id) {
 
 async function listScripts(limit = 20, accountId = 'default') {
   const db = await getDb()
-  const safeAccountId = String(accountId).replace(/'/g, "''")
   const res = db.exec(
-    `SELECT id, created_at FROM scripts WHERE account_id = '${safeAccountId}' ORDER BY id DESC LIMIT ${limit}`
+    'SELECT id, created_at FROM scripts WHERE account_id = ? ORDER BY id DESC LIMIT ?',
+    [accountId, limit]
   )
   if (!res.length) return []
   return res[0].values.map((row) => ({
@@ -738,10 +763,16 @@ async function getCrawlCreators(taskId, limit = 100) {
 
 // --- 临时：清理旧数据 ---
 
-async function cleanOldData() {
+async function cleanOldData(accountId = 'default') {
   const db = await getDb()
-  db.run("DELETE FROM crawl_content WHERE source_uid = '' OR source_uid IS NULL")
-  db.run("DELETE FROM creators")
+  db.run(
+    `DELETE FROM crawl_content WHERE task_id IN (SELECT id FROM crawl_tasks WHERE account_id = ?)`,
+    [accountId]
+  )
+  db.run(
+    `DELETE FROM creators WHERE account_id = ?`,
+    [accountId]
+  )
   saveDb()
 }
 
@@ -1301,6 +1332,11 @@ async function getRecentCrawlSummary(accountId = 'default') {
 
 function reloadDb() {
   if (_saveTimer) { clearTimeout(_saveTimer); _saveTimer = null }
+  if (_dirty && db) {
+    const data = db.export()
+    const buffer = Buffer.from(data)
+    fs.writeFileSync(DB_PATH, buffer)
+  }
   _dirty = false
   db = null
 }
@@ -1429,15 +1465,16 @@ async function getCompetitors(platform, accountId = 'default') {
 async function getCompetitorRecentContent(platform, competitorUids, days = 7, accountId = 'default') {
   if (!competitorUids || !competitorUids.length) return []
   const db = await getDb()
-  const since = Math.floor(Date.now() / 1000) - days * 86400
+  const dateThreshold = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10)
   const placeholders = competitorUids.map(() => '?').join(',')
   const result = db.exec(
     `SELECT cc.title, cc.like_count, cc.comment_count, cc.share_count, cc.play_count, cc.author_name, cc.category
      FROM crawl_content cc
      INNER JOIN crawl_tasks ct ON cc.task_id = ct.id
      WHERE cc.platform = ? AND cc.source_uid IN (${placeholders}) AND ct.account_id = ?
+       AND cc.created_at >= ?
      ORDER BY cc.created_at DESC`,
-    [platform, ...competitorUids, accountId]
+    [platform, ...competitorUids, accountId, dateThreshold]
   )
   if (!result.length) return []
   return result[0].values.map(row => ({

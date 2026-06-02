@@ -13,11 +13,6 @@ import type { ComponentType } from 'react'
 import logoSvg from '../../assets/logo-sidebar.svg?url'
 
 async function readFileAsText(file: File): Promise<string> {
-  if (file.name.endsWith('.docx')) {
-    const mammoth = await import('mammoth')
-    const result = await mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() })
-    return result.value
-  }
   return await file.text()
 }
 
@@ -374,7 +369,7 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
     const api = window.electronAPI
     const userContent = textToSend.trim()
     const userMessage: Message = {
-      id: Date.now().toString(),
+      id: `user_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       role: 'user',
       content: userContent,
     }
@@ -386,7 +381,7 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
       onConversationChange?.()
     }
 
-    const assistantId = (Date.now() + 1).toString()
+    const assistantId = `asst_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
     assistantIdRef.current = assistantId
     toolDataRef.current = {}
     const assistantMessage: Message = {
@@ -405,19 +400,24 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
       await api.addMessage(convId, 'user', userContent)
     }
 
-    if (api?.runAgent) {
-      await api.runAgent(userContent, defaultPlatforms)
-    } else {
-      setMessages((prev) => {
-        const last = prev[prev.length - 1]
-        if (last && last.id === assistantId) {
-          return [...prev.slice(0, -1), {
-            ...last,
-            content: 'Electron IPC 不可用。请确保在 Electron 中运行。',
-          }]
-        }
-        return prev
-      })
+    try {
+      if (api?.runAgent) {
+        await api.runAgent(userContent, defaultPlatforms)
+      } else {
+        setMessages((prev) => {
+          const last = prev[prev.length - 1]
+          if (last && last.id === assistantId) {
+            return [...prev.slice(0, -1), {
+              ...last,
+              content: 'Electron IPC 不可用。请确保在 Electron 中运行。',
+            }]
+          }
+          return prev
+        })
+        setIsStreaming(false)
+        setStatus('')
+      }
+    } catch {
       setIsStreaming(false)
       setStatus('')
     }
@@ -452,7 +452,7 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
     if (last.role === 'assistant' && last.content) {
       saveMessages(conversationId, [last]).then(() => onConversationChange?.())
     }
-  }, [isStreaming])
+  }, [isStreaming, conversationId, messages, saveMessages, onConversationChange])
 
   const handleStop = async () => {
     await window.electronAPI?.stopAgent()
@@ -521,8 +521,10 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
     }
   }
 
-  const submitFeedback = (_msgId: string, _reason: string) => {
+  const submitFeedback = (msgId: string, reason: string) => {
     setFeedbackTarget(null)
+    // TODO: persist feedback to database for future model fine-tuning
+    console.log(`[Feedback] msg=${msgId} reason=${reason}`)
     showToast('感谢反馈', 'success')
   }
 
@@ -558,7 +560,7 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
 
     // Re-send with edited content
     setIsStreaming(true)
-    const assistantId = (Date.now() + 1).toString()
+    const assistantId = `asst_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
     assistantIdRef.current = assistantId
     toolDataRef.current = {}
     setMessages(prev => [
@@ -566,9 +568,14 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
       { id: assistantId, role: 'assistant', content: '' },
     ])
 
-    const api = window.electronAPI
-    if (api?.runAgent) {
-      await api.runAgent(editingContent.trim(), defaultPlatforms)
+    try {
+      const api = window.electronAPI
+      if (api?.runAgent) {
+        await api.runAgent(editingContent.trim(), defaultPlatforms)
+      }
+    } catch {
+      setIsStreaming(false)
+      setStatus('')
     }
   }
 
@@ -579,8 +586,8 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
   const handleDragLeave = () => setIsDragging(false)
   const importFile = async (file: File) => {
     const ext = file.name.split('.').pop()?.toLowerCase()
-    if (!['txt', 'md', 'docx'].includes(ext || '')) {
-      showToast('不支持的文件格式，请使用 .txt / .md / .docx', 'error')
+    if (!['txt', 'md'].includes(ext || '')) {
+      showToast('不支持的文件格式，请使用 .txt / .md', 'error')
       return
     }
     try {
@@ -649,7 +656,7 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
       <input
         ref={fileInputRef}
         type="file"
-        accept=".txt,.md,.docx"
+        accept=".txt,.md"
         onChange={handleFileImport}
         className="hidden"
       />
@@ -669,7 +676,7 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
           <button
             onClick={() => fileInputRef.current?.click()}
             className="absolute left-2 bottom-2 w-8 h-8 rounded-full flex items-center justify-center text-muted hover:text-ink hover:bg-hairline transition-colors z-10"
-            title="上传文件 (.txt / .md / .docx)"
+            title="上传文件 (.txt / .md)"
           >
             <Paperclip className="w-4.5 h-4.5" />
           </button>
@@ -758,7 +765,7 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
                 <div className="text-center">
                   <UploadSimple className="w-12 h-12 text-primary mb-2" />
                   <p className="text-sm text-ink">拖放文件到这里导入</p>
-                  <p className="text-[11px] text-muted">支持 .txt / .md / .docx</p>
+                  <p className="text-[11px] text-muted">支持 .txt / .md</p>
                 </div>
               </div>
             )}

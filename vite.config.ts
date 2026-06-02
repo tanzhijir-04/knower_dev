@@ -30,4 +30,15 @@ export default defineConfig({
   css: {
     postcss: './postcss.config.js',
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom'],
+          'vendor-charts': ['echarts-for-react'],
+          'vendor-icons': ['@phosphor-icons/react'],
+        },
+      },
+    },
+  },
 })

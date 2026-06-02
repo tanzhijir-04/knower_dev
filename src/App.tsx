@@ -5,6 +5,7 @@ import TopicsView from './components/TopicsView'
 import DataView from './components/DataView'
 import SettingsView from './components/SettingsView'
 import TrendingView from './components/TrendingView'
+import ErrorBoundary from './components/ErrorBoundary'
 import { ToastProvider } from './contexts/ToastContext'
 import { PlatformProvider } from './contexts/PlatformContext'
 import { AccountProvider } from './contexts/AccountContext'
@@ -83,6 +84,7 @@ export default function App() {
   })
 
   return (
+    <ErrorBoundary>
     <ToastProvider>
       <PlatformProvider>
         <AccountProvider>
@@ -146,5 +148,6 @@ export default function App() {
         </AccountProvider>
       </PlatformProvider>
     </ToastProvider>
+    </ErrorBoundary>
   )
 }

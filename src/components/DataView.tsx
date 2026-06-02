@@ -739,9 +739,11 @@ export default function DataView() {
     setVideos(prev => prev.map(v => v.contentId === contentId ? { ...v, category } : v))
   }
 
-  const filteredVideos = selectedCategory
-    ? videos.filter(v => v.category === selectedCategory)
-    : videos
+  const filteredVideos = useMemo(() => {
+    return selectedCategory
+      ? videos.filter(v => v.category === selectedCategory)
+      : videos
+  }, [videos, selectedCategory])
 
   const sortedVideos = useMemo(() => {
     return [...filteredVideos].sort((a, b) => {
