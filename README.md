@@ -23,7 +23,7 @@
 | 前端 | React 18 + TypeScript 5.6 |
 | 构建 | Vite 6 + vite-plugin-electron |
 | 样式 | Tailwind CSS 3.4（暗色主题） |
-| AI | OpenAI-compatible API（支持 Claude / GPT / 其他） |
+| AI | Anthropic SDK + OpenAI-compatible API（支持 Claude / GPT / 其他） |
 | 存储 | sql.js（WASM SQLite） |
 | 爬虫 | MediaCrawler（Python 子进程） |
 
