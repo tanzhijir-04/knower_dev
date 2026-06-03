@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { PlayCircle, Screencast, Palette, Hash, ListChecks, ChartBar, Check, Copy, StackSimple } from '@phosphor-icons/react'
+import { PlayCircle, Screencast, Palette, Hash, ListChecks, ChartBar, Check, Copy } from '@phosphor-icons/react'
 import type { ComponentType } from 'react'
 import { useToast } from '../contexts/ToastContext'
 
@@ -31,7 +31,6 @@ export interface MaterialData {
 
 interface Props {
   data: MaterialData
-  onOpenCanvas?: () => void
 }
 
 const PLATFORMS: { key: string; label: string; icon: ComponentType<{ className?: string }>; color: string }[] = [
@@ -108,49 +107,27 @@ function AnalysisCard({ analysis }: { analysis: MaterialData['analysis'] }) {
 }
 
 function PlatformTab({ material }: { platform: typeof PLATFORMS[number]; material: PlatformMaterial }) {
+  const fields: { key: string; label: string; value?: string }[] = []
+  if (material.hook) fields.push({ key: 'hook', label: '前 3 秒钩子', value: material.hook })
+  if (material.title) fields.push({ key: 'title', label: '标题', value: material.title })
+  if (material.coverTitle) fields.push({ key: 'cover', label: '封面标题', value: material.coverTitle })
+  const desc = material.description || material.body
+  if (desc) fields.push({ key: 'desc', label: material.description ? '描述' : '正文', value: desc })
+
   return (
     <div className="space-y-3">
-      {material.hook && (
-        <div>
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-xs text-muted">前 3 秒钩子</span>
-            <CopyButton text={material.hook} />
+      {fields.map(f => (
+        <div key={f.key} className="card-sm">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-muted">{f.label}</span>
+            <CopyButton text={f.value!} />
           </div>
-          <p className="text-sm text-ink bg-canvas-soft rounded-lg px-3 py-2">{material.hook}</p>
+          <p className="text-sm text-ink whitespace-pre-wrap leading-relaxed">{f.value}</p>
         </div>
-      )}
-      {material.title && (
-        <div>
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-xs text-muted">标题</span>
-            <CopyButton text={material.title} />
-          </div>
-          <p className="text-sm text-ink bg-canvas-soft rounded-lg px-3 py-2">{material.title}</p>
-        </div>
-      )}
-      {material.coverTitle && (
-        <div>
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-xs text-muted">封面标题</span>
-            <CopyButton text={material.coverTitle} />
-          </div>
-          <p className="text-sm text-ink bg-canvas-soft rounded-lg px-3 py-2">{material.coverTitle}</p>
-        </div>
-      )}
-      {(material.description || material.body) && (
-        <div>
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-xs text-muted">{material.description ? '描述' : '正文'}</span>
-            <CopyButton text={material.description || material.body || ''} />
-          </div>
-          <p className="text-sm text-ink bg-canvas-soft rounded-lg px-3 py-2 whitespace-pre-wrap leading-relaxed">
-            {material.description || material.body}
-          </p>
-        </div>
-      )}
+      ))}
       {material.tags && material.tags.length > 0 && (
-        <div>
-          <span className="text-xs text-muted block mb-1.5">标签</span>
+        <div className="card-sm">
+          <span className="text-xs text-muted block mb-2">标签</span>
           <div className="flex flex-wrap gap-1.5">
             {material.tags.map((tag, i) => (
               <span key={i} className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">
@@ -197,7 +174,38 @@ function ChecklistTab({ checklist }: { checklist: NonNullable<MaterialData['resu
   )
 }
 
-export default function MaterialCards({ data, onOpenCanvas }: Props) {
+function CopyAllButton({ data, activeTab }: { data: MaterialData; activeTab: string }) {
+  const [copied, setCopied] = useState(false)
+  const { showToast } = useToast()
+
+  if (activeTab === 'checklist') return null
+
+  const handleCopyAll = async () => {
+    const material = (data.result as Record<string, unknown>)[activeTab] as PlatformMaterial | undefined
+    if (!material) return
+    const parts: string[] = []
+    if (material.title) parts.push(`标题：${material.title}`)
+    if (material.description || material.body) parts.push(`描述：${material.description || material.body}`)
+    if (material.tags?.length) parts.push(`标签：${material.tags.map(t => '#' + t).join(' ')}`)
+    await navigator.clipboard.writeText(parts.join('\n'))
+    setCopied(true)
+    showToast('已复制当前平台物料', 'success')
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <button
+      onClick={handleCopyAll}
+      className="ml-auto flex items-center gap-1 px-2.5 py-1.5 text-xs text-muted hover:text-ink hover:bg-hairline rounded-lg transition-colors shrink-0"
+      title="复制全部"
+    >
+      {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+      <span className="hidden sm:inline">复制全部</span>
+    </button>
+  )
+}
+
+export default function MaterialCards({ data }: Props) {
   const [activeTab, setActiveTab] = useState<string>('bilibili')
 
   if (!data.result && !data.analysis) return null
@@ -223,16 +231,7 @@ export default function MaterialCards({ data, onOpenCanvas }: Props) {
             {p.label}
           </button>
         ))}
-        {onOpenCanvas && (
-          <button
-            onClick={onOpenCanvas}
-            className="ml-auto flex items-center gap-1 px-2.5 py-1.5 text-xs text-muted hover:text-ink hover:bg-hairline rounded-lg transition-colors shrink-0"
-            title="在面板查看"
-          >
-            <StackSimple className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">面板</span>
-          </button>
-        )}
+        <CopyAllButton data={data} activeTab={activeTab} />
       </div>
 
       {/* Tab 内容 */}

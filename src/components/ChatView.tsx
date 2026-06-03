@@ -7,8 +7,8 @@ import type { Page } from '../App'
 import { useToast } from '../contexts/ToastContext'
 import { usePlatform } from '../contexts/PlatformContext'
 import { useAccount } from '../contexts/AccountContext'
-import { animateMessage, modalEnter, modalExit, menuEnter, timelinePillEnter, gsap } from '../lib/gsap'
-import { Info, FileText, X, StopCircle, ArrowUp, ArrowDown, Plus, UploadSimple, Lightning, ListChecks, Exam, Sparkle, Lightbulb, PencilSimple, ThumbsUp, ThumbsDown, Check, Copy, Export, ArrowsClockwise, StackSimple, MagicWand, ChartBar, Download, GearSix, MagnifyingGlass, Paperclip } from '@phosphor-icons/react'
+import { animateMessage, modalEnter, modalExit, menuEnter } from '../lib/gsap'
+import { Info, FileText, X, StopCircle, ArrowUp, ArrowDown, Plus, UploadSimple, Lightning, ListChecks, Exam, Sparkle, Lightbulb, PencilSimple, ThumbsUp, ThumbsDown, Check, Copy, Export, ArrowsClockwise, Spinner, XCircle, CheckCircle, MagicWand, ChartBar, Download, MagnifyingGlass, Paperclip } from '@phosphor-icons/react'
 import type { ComponentType } from 'react'
 import logoSvg from '../../assets/logo-sidebar.svg?url'
 
@@ -306,8 +306,7 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
   const [autoScroll, setAutoScroll] = useState(true)
   const [showMoreActions, setShowMoreActions] = useState(false)
   const [feedbackTarget, setFeedbackTarget] = useState<string | null>(null)
-  const [canvasOpen, setCanvasOpen] = useState(false)
-  const [canvasData, setCanvasData] = useState<MaterialData | null>(null)
+  const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set())
   const [agentFormRequest, setAgentFormRequest] = useState<{
     message: string
     fields: { name: string; label: string; type: string; options?: string[]; placeholder?: string }[]
@@ -351,8 +350,6 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
     setInput('')
     setIsStreaming(false)
     setStatus('')
-    setCanvasOpen(false)
-    setCanvasData(null)
     setAgentFormRequest(null)
     animatedMsgIdsRef.current.clear()
     savedMsgIdsRef.current.clear()
@@ -833,9 +830,13 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
     setShowMoreActions(false)
   }
 
-  const openCanvas = (data: MaterialData) => {
-    setCanvasData(data)
-    setCanvasOpen(true)
+  const toggleToolExpand = (key: string) => {
+    setExpandedTools(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -969,7 +970,7 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
       {/* Main content area: chat + canvas */}
       <div className="flex flex-1 overflow-hidden">
         {/* Chat column */}
-        <div className={`flex-1 flex flex-col overflow-hidden transition-all duration-300 ${canvasOpen ? 'max-w-[calc(100%-420px)]' : ''}`}>
+        <div className="flex-1 flex flex-col overflow-hidden">
           {/* Messages area */}
           <div ref={scrollContainerRef} onScroll={handleScroll} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop} className="flex-1 overflow-y-auto relative">
             {isDragging && (
@@ -982,33 +983,48 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
               </div>
             )}
             {showWelcome ? (
-              <div className="flex flex-col items-center justify-center h-full px-6 max-w-2xl mx-auto">
+              <div className="flex flex-col items-center justify-center h-full px-6 max-w-3xl mx-auto">
                 <img src={logoSvg} alt="知更" className="w-16 h-16 rounded-2xl mb-6" />
                 <h1 className="text-[36px] font-normal text-ink mb-2" style={{ lineHeight: 1.2, letterSpacing: '-0.72px' }}>知更 Knower</h1>
-                <p className="text-[16px] text-muted mb-8" style={{ lineHeight: 1.5 }}>让创作者比平台更早知道下一步该做什么</p>
+                <p className="text-[16px] text-muted mb-10" style={{ lineHeight: 1.5 }}>让创作者比平台更早知道下一步该做什么</p>
 
-                {/* 快速开始卡片 */}
-                <button className="card w-full max-w-md text-left mb-4 hover:border-primary/30 transition-colors group cursor-pointer" onClick={() => textareaRef.current?.focus()}>
-                  <div className="flex items-center gap-3">
-                    <Lightning className="w-5 h-5 text-primary" />
-                    <div>
-                      <p className="text-[14px] font-medium text-ink group-hover:text-primary transition-colors">粘贴脚本，一键生成物料</p>
-                      <p className="text-[13px] text-muted">支持 B站 / YouTube / 抖音 / 小红书</p>
+                {/* 三栏功能卡片 */}
+                <div className="grid grid-cols-3 gap-4 w-full max-w-2xl mb-8">
+                  <button
+                    className="card text-left hover:border-primary/30 transition-colors group cursor-pointer flex flex-col items-center text-center py-6"
+                    onClick={() => textareaRef.current?.focus()}
+                  >
+                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center mb-3">
+                      <Lightning className="w-5 h-5 text-primary" />
                     </div>
-                  </div>
-                </button>
-
-                {/* 快捷操作 */}
-                <div className="flex gap-3 justify-center">
-                  <button className="card-sm flex items-center gap-2 hover:border-primary/30 transition-colors cursor-pointer" onClick={() => onNavigate?.('data')}>
-                    <ChartBar className="w-4 h-4 text-primary" />
-                    <span className="text-[14px] text-ink">查看数据</span>
+                    <p className="text-[14px] font-medium text-ink group-hover:text-primary transition-colors mb-1">生成物料</p>
+                    <p className="text-[12px] text-muted leading-snug">粘贴脚本，一键生成<br />各平台发布物料</p>
                   </button>
-                  <button className="card-sm flex items-center gap-2 hover:border-primary/30 transition-colors cursor-pointer" onClick={() => onNavigate?.('settings')}>
-                    <GearSix className="w-4 h-4 text-primary" />
-                    <span className="text-[14px] text-ink">配置 API</span>
+
+                  <button
+                    className="card text-left hover:border-primary/30 transition-colors group cursor-pointer flex flex-col items-center text-center py-6"
+                    onClick={() => onNavigate?.('data')}
+                  >
+                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center mb-3">
+                      <ChartBar className="w-5 h-5 text-primary" />
+                    </div>
+                    <p className="text-[14px] font-medium text-ink group-hover:text-primary transition-colors mb-1">数据分析</p>
+                    <p className="text-[12px] text-muted leading-snug">查看账号数据概览<br />了解内容表现</p>
+                  </button>
+
+                  <button
+                    className="card text-left hover:border-primary/30 transition-colors group cursor-pointer flex flex-col items-center text-center py-6"
+                    onClick={() => onNavigate?.('topics')}
+                  >
+                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center mb-3">
+                      <Lightbulb className="w-5 h-5 text-primary" />
+                    </div>
+                    <p className="text-[14px] font-medium text-ink group-hover:text-primary transition-colors mb-1">选题灵感</p>
+                    <p className="text-[12px] text-muted leading-snug">AI 推荐热门选题<br />激发创作灵感</p>
                   </button>
                 </div>
+
+                <p className="text-[12px] text-muted-soft">试试直接粘贴一段视频脚本到输入框，知更会自动分析并生成物料</p>
               </div>
             ) : (
               <div className="flex flex-col gap-4 p-6 max-w-3xl mx-auto">
@@ -1037,12 +1053,15 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
 
                   const toolLabels: Record<string, string> = {
                     crawl_data: '爬取平台数据',
+                    crawl_data_batch: '批量爬取数据',
                     query_data: '查询本地数据',
                     analyze_script: '分析脚本结构',
                     expand_script: '生成各平台物料',
                     suggest_topics: '生成选题建议',
                     save_result: '保存到数据库',
                     request_user_input: '请求补充信息',
+                    search_similar: '语义检索历史数据',
+                    analyze_topic: '深度分析选题',
                   }
 
                   const isNewMsg = msg.id === messages[messages.length - 1]?.id
@@ -1057,23 +1076,67 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
                       className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
                     >
                       <div className={`${msg.role === 'user' ? 'max-w-[75%]' : 'w-full'} group/bubble relative`}>
-                        {/* Tool call timeline */}
+                        {/* Tool call cards */}
                         {msg.toolCalls && msg.toolCalls.length > 0 && (
-                          <div className="flex flex-wrap items-center gap-2 mb-3">
+                          <div className="flex flex-col gap-2 mb-3">
                             {msg.toolCalls.map((tc, i) => {
-                              const pillClass = tc.status === 'running' ? 'pill-thinking'
-                                : tc.status === 'success' ? 'pill-done'
-                                : 'pill-edit'
-                              const label = tc.status === 'running' ? 'Thinking'
-                                : tc.status === 'success' ? 'Done'
-                                : 'Error'
-                              const elapsed = tc.endTime ? `${((tc.endTime - tc.startTime) / 1000).toFixed(1)}s` : ''
+                              const toolKey = `${msg.id}-${i}`
+                              const isExpanded = expandedTools.has(toolKey)
+                              const label = toolLabels[tc.name] || tc.name
+                              const elapsed = tc.endTime
+                                ? `${((tc.endTime - tc.startTime) / 1000).toFixed(1)}s`
+                                : ''
+                              const statusClass = tc.status === 'running' ? 'running'
+                                : tc.status === 'success' ? 'success' : 'error'
+                              const borderColorVar = tc.status === 'running' ? 'var(--primary)'
+                                : tc.status === 'success' ? 'var(--semantic-success)' : 'var(--semantic-error)'
+                              const Icon = tc.status === 'running' ? Spinner
+                                : tc.status === 'success' ? CheckCircle : XCircle
+
                               return (
-                                <div key={i} ref={(el) => { if (el) timelinePillEnter(el) }} className="flex items-center gap-1.5">
-                                  {i > 0 && <span className="text-muted-soft">→</span>}
-                                  <span className={`timeline-pill ${pillClass}`}>{label}</span>
-                                  <span className="text-[13px] text-muted">{toolLabels[tc.name] || tc.name}</span>
-                                  {elapsed && <span className="text-[12px] text-muted-soft">{elapsed}</span>}
+                                <div
+                                  key={i}
+                                  className={`tool-card animate-tool-enter`}
+                                  style={{ borderLeft: `3px solid ${borderColorVar}` }}
+                                >
+                                  <div
+                                    className="tool-card-header"
+                                    onClick={() => toggleToolExpand(toolKey)}
+                                  >
+                                    <div className={`tool-icon ${statusClass} ${tc.status === 'running' ? 'animate-spin' : ''}`}>
+                                      <Icon className="w-4 h-4" />
+                                    </div>
+                                    <span className="text-[13px] font-medium text-ink flex-1">{label}</span>
+                                    <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${
+                                      tc.status === 'running' ? 'bg-primary/10 text-primary animate-pulse'
+                                        : tc.status === 'success' ? 'bg-semantic-success/10 text-semantic-success'
+                                        : 'bg-semantic-error/10 text-semantic-error'
+                                    }`}>
+                                      {tc.status === 'running' ? '运行中' : tc.status === 'success' ? '完成' : '错误'}
+                                    </span>
+                                    {elapsed && <span className="text-[11px] text-muted-soft font-mono">{elapsed}</span>}
+                                    <span className={`text-muted transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}>▶</span>
+                                  </div>
+                                  {isExpanded && (
+                                    <div className="tool-card-body animate-msg-enter">
+                                      {tc.input && Object.keys(tc.input).length > 0 && (
+                                        <div className="mt-2">
+                                          <span className="text-[11px] text-muted uppercase tracking-wide">输入</span>
+                                          <pre className="text-[12px] text-ink bg-canvas-soft rounded-lg p-3 mt-1 overflow-x-auto font-mono">
+                                            {JSON.stringify(tc.input, null, 2)}
+                                          </pre>
+                                        </div>
+                                      )}
+                                      {tc.result && (
+                                        <div className="mt-2">
+                                          <span className="text-[11px] text-muted uppercase tracking-wide">输出</span>
+                                          <pre className="text-[12px] text-ink bg-canvas-soft rounded-lg p-3 mt-1 overflow-x-auto font-mono">
+                                            {tc.result}
+                                          </pre>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
                                 </div>
                               )
                             })}
@@ -1091,7 +1154,7 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
                                 {isCurrentAssistant && <span className="typing-cursor" />}
                               </div>
                             )}
-                            {materialData && <MaterialCards data={materialData} onOpenCanvas={() => openCanvas(materialData)} />}
+                            {materialData && <MaterialCards data={materialData} />}
                           </div>
                         ) : (
                           editingMsgId === msg.id ? (
@@ -1146,11 +1209,6 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
                             <button onClick={() => handleRegenerate(msg)} className="msg-action-btn" title="重新生成">
                               <ArrowsClockwise className="w-3.5 h-3.5" />
                             </button>
-                            {materialData && (
-                              <button onClick={() => openCanvas(materialData)} className="msg-action-btn" title="在面板查看">
-                                <StackSimple className="w-3.5 h-3.5" />
-                              </button>
-                            )}
                           </div>
                         )}
 
@@ -1200,48 +1258,6 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
           {inputArea}
         </div>
 
-        {/* Canvas side panel */}
-        {canvasOpen && (
-          <div ref={(el) => { if (el) { el.style.opacity = '0'; gsap.set(el, { x: 20 }); gsap.to(el, { opacity: 1, x: 0, duration: 0.3, ease: 'power2.out', clearProps: 'transform' }) } }} className="w-[420px] border-l border-hairline bg-canvas-soft flex flex-col shrink-0">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-hairline">
-              <span className="text-sm font-medium text-ink flex items-center gap-2">
-                <StackSimple className="w-4 h-4 text-primary" />
-                物料面板
-              </span>
-              <button onClick={() => setCanvasOpen(false)} className="text-muted hover:text-ink">
-                <X className="w-4.5 h-4.5" />
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto overflow-x-hidden p-4">
-              {canvasData && <MaterialCards data={canvasData} />}
-            </div>
-            <div className="px-4 py-3 border-t border-hairline flex gap-2">
-              <button onClick={() => {
-                if (!canvasData?.result) return
-                const text = JSON.stringify(canvasData.result, null, 2)
-                navigator.clipboard.writeText(text)
-                showToast('已复制全部物料', 'success')
-              }} className="flex-1 btn-primary text-xs flex items-center justify-center gap-1">
-                <Copy className="w-3.5 h-3.5" />
-                复制全部
-              </button>
-              <button onClick={() => {
-                if (!canvasData?.result) return
-                const blob = new Blob([JSON.stringify(canvasData.result, null, 2)], { type: 'application/json' })
-                const url = URL.createObjectURL(blob)
-                const a = document.createElement('a')
-                a.href = url
-                a.download = `物料_${new Date().toISOString().slice(0, 10)}.json`
-                a.click()
-                URL.revokeObjectURL(url)
-                showToast('已导出物料', 'success')
-              }} className="flex-1 btn-secondary text-xs flex items-center justify-center gap-1">
-                <Export className="w-3.5 h-3.5" />
-                导出
-              </button>
-            </div>
-          </div>
-        )}
 
         {/* Agent Form Request Modal */}
         {agentFormRequest && (

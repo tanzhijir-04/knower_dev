@@ -74,6 +74,30 @@
   0% { background-position: -200% 0; }
   100% { background-position: 200% 0; }
 }
+@keyframes msg-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes tool-enter {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes expand-in {
+  from { opacity: 0; max-height: 0; }
+  to { opacity: 1; max-height: 500px; }
+}
+@keyframes pulse-green {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(31, 138, 101, 0.4); }
+  50% { box-shadow: 0 0 0 6px rgba(31, 138, 101, 0); }
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(60px) scale(0.95); }
+  to { opacity: 1; transform: translateX(0) scale(1); }
+}
+@keyframes toast-out {
+  from { opacity: 1; transform: translateX(0); }
+  to { opacity: 0; transform: translateX(40px); }
+}
 
 /* ========== Base ========== */
 @layer base {
@@ -349,6 +373,8 @@
   .tool-card-body {
     padding: 0 16px 12px;
     border-top: 1px solid var(--hairline);
+    overflow: hidden;
+    transition: max-height 0.25s ease-in-out, opacity 0.2s ease-in-out;
   }
 
   /* --- Message Actions --- */
@@ -394,6 +420,9 @@
   .animate-spin { animation: spin 1s linear infinite; }
   .animate-msg-enter { animation: fade-in 0.2s ease-out forwards; }
   .animate-tool-enter { animation: fade-in 0.25s ease-out forwards; }
+  .animate-pulse-green { animation: pulse-green 2s ease-in-out infinite; }
+  .animate-toast-in { animation: toast-in 0.35s ease-out forwards; }
+  .animate-toast-out { animation: toast-out 0.25s ease-in forwards; }
 
   .typing-cursor::after {
     content: '|';
