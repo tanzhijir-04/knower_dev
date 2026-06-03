@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { TrendUp, MagnifyingGlass, User, FileText, ArrowRight, ArrowLeft } from '@phosphor-icons/react'
+import { TrendUp, MagnifyingGlass, User, FileText, ArrowRight, ArrowLeft, CheckCircle } from '@phosphor-icons/react'
 import type { IconProps } from '@phosphor-icons/react'
 import { staggerIn } from '../../lib/gsap'
 
@@ -9,55 +9,114 @@ interface LogEntry {
   status: 'active' | 'done'
 }
 
+interface AgentEvent {
+  type: string
+  name?: string
+  message?: string
+  input?: Record<string, unknown>
+  result?: unknown
+  text?: string
+}
+
+const TOOL_LABELS: Record<string, string> = {
+  query_data: '查询历史数据',
+  search_similar: '搜索相似内容',
+  crawl_data: '爬取平台数据',
+  crawl_data_batch: '批量爬取数据',
+  suggest_topics: 'AI 生成选题中',
+  analyze_script: '分析脚本',
+  request_user_input: '等待用户输入',
+  save_result: '保存结果',
+}
+
+const TOOL_ICONS: Record<string, React.ComponentType<IconProps>> = {
+  query_data: MagnifyingGlass,
+  search_similar: MagnifyingGlass,
+  crawl_data: TrendUp,
+  crawl_data_batch: TrendUp,
+  suggest_topics: FileText,
+  analyze_script: FileText,
+  request_user_input: User,
+  save_result: FileText,
+}
+
 const FALLBACK_LOGS: LogEntry[] = [
-  { icon: MagnifyingGlass, text: '正在抓取平台热点数据...', status: 'active' },
-  { icon: TrendUp, text: '发现高潜力方向...', status: 'done' },
-  { icon: User, text: '结合历史数据分析...', status: 'done' },
-  { icon: FileText, text: 'AI 正在生成选题...', status: 'done' },
+  { icon: MagnifyingGlass, text: 'Agent 启动中...', status: 'active' },
 ]
 
-function buildLogEntries(messages: string[], isComplete: boolean): LogEntry[] {
-  const clean = messages.filter(Boolean)
-  if (clean.length === 0) return FALLBACK_LOGS
-  const iconMap: Record<string, React.ComponentType<IconProps>> = {
-    '检查': MagnifyingGlass,
-    '查询': MagnifyingGlass,
-    '抓取': TrendUp,
-    '爬取': TrendUp,
-    '竞品': User,
-    'AI': FileText,
-    '解析': FileText,
-    '生成': FileText,
-    '趋势': TrendUp,
-    '偏好': User,
-    '完成': TrendUp,
-  }
-  return clean.map((msg, i) => {
-    const isLast = i === messages.length - 1
-    const matchedKey = Object.keys(iconMap).find(k => msg.includes(k))
-    return {
-      icon: matchedKey ? iconMap[matchedKey] : MagnifyingGlass,
-      text: msg,
-      status: isComplete ? 'done' : (isLast ? 'active' : 'done'),
+function buildLogEntries(events: AgentEvent[], isComplete: boolean): LogEntry[] {
+  if (events.length === 0) return FALLBACK_LOGS
+
+  const logs: LogEntry[] = []
+
+  for (const evt of events) {
+    if (evt.type === 'tool_call' && evt.name) {
+      const label = TOOL_LABELS[evt.name] || evt.name
+      logs.push({
+        icon: TOOL_ICONS[evt.name] || MagnifyingGlass,
+        text: label,
+        status: 'active',
+      })
+    } else if (evt.type === 'tool_progress' && evt.message) {
+      // Update the last active entry with progress message
+      if (logs.length > 0) {
+        const last = logs[logs.length - 1]
+        logs.push({
+          icon: last.icon,
+          text: evt.message,
+          status: 'active',
+        })
+      }
+    } else if (evt.type === 'tool_result' && evt.name) {
+      const label = TOOL_LABELS[evt.name] || evt.name
+      // Mark previous entries as done, add completion
+      for (const log of logs) {
+        if (log.status === 'active') log.status = 'done'
+      }
+      logs.push({
+        icon: CheckCircle,
+        text: `${label} — 完成`,
+        status: 'done',
+      })
+    } else if (evt.type === 'text' && evt.text) {
+      logs.push({
+        icon: FileText,
+        text: evt.text.slice(0, 80) + (evt.text.length > 80 ? '...' : ''),
+        status: 'done',
+      })
     }
-  })
+  }
+
+  if (logs.length === 0) return FALLBACK_LOGS
+
+  // Mark all as done if complete
+  if (isComplete) {
+    for (const log of logs) log.status = 'done'
+  } else if (logs.length > 0) {
+    // Keep only the last entry as active
+    for (let i = 0; i < logs.length - 1; i++) {
+      if (logs[i].status === 'active') logs[i].status = 'done'
+    }
+  }
+
+  return logs
 }
 
 interface Props {
   onSkip: () => void
   onBack?: () => void
-  progressMessages?: string[]
+  agentEvents?: AgentEvent[]
   isComplete?: boolean
 }
 
-export default function ThinkingState({ onSkip, onBack, progressMessages = [], isComplete = false }: Props) {
+export default function ThinkingState({ onSkip, onBack, agentEvents = [], isComplete = false }: Props) {
   const logRefs = useRef<HTMLDivElement[]>([])
-  const logs = buildLogEntries(progressMessages, isComplete)
+  const logs = buildLogEntries(agentEvents, isComplete)
 
   useEffect(() => {
     const els = logRefs.current.filter(Boolean)
     if (els.length) staggerIn(els, { stagger: 0.15, y: 12 })
-  }, [progressMessages.length])
+  }, [agentEvents.length])
 
   return (
     <div className="flex-1 flex items-center justify-center px-8">
@@ -84,7 +143,7 @@ export default function ThinkingState({ onSkip, onBack, progressMessages = [], i
         <div className="h-1 bg-hairline rounded-full mb-12 relative overflow-hidden">
           <div
             className="h-full bg-primary rounded-full transition-all duration-500"
-            style={{ width: isComplete ? '100%' : '75%' }}
+            style={{ width: isComplete ? '100%' : `${Math.min(90, 20 + logs.length * 15)}%` }}
           />
         </div>
 

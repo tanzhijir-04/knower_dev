@@ -292,6 +292,10 @@ export interface ElectronAPI {
   listCheckpoints: () => Promise<{ conversationId: number; phase: string; savedAt: string; messageCount: number }[]>
   clearCheckpoint: (conversationId: number) => Promise<boolean>
   onAgentEvent: (callback: (event: string) => void) => () => void
+  // 灵感库 Agent
+  runTopicAgent: (platform: string, mode: string) => Promise<{ error?: string }>
+  stopTopicAgent: () => Promise<boolean>
+  onTopicAgentEvent: (callback: (event: string) => void) => () => void
   // 会话
   convList?: () => Promise<Conversation[]>
   listConversations: () => Promise<Conversation[]>

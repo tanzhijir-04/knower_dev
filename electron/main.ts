@@ -304,6 +304,90 @@ ipcMain.handle('agent-stop', () => {
 })
 
 // ============================================================
+//  灵感库 Agent（独立 channel，不与创作台冲突）
+// ============================================================
+
+let topicAgentLock = false
+let topicAbortController: AbortController | null = null
+
+function buildTopicPrompt(platform: string, mode: string) {
+  const platformMap: Record<string, string> = { bili: 'B站', dy: '抖音', xhs: '小红书' }
+  const modeMap: Record<string, string> = {
+    trend: '热点趋势',
+    differentiated: '差异化切入',
+    competitor: '竞品对标',
+    series: '系列化规划',
+  }
+  return `请为 ${platformMap[platform] || platform} 平台生成 5 个高潜力选题。模式：${modeMap[mode] || '热点趋势'}。
+
+要求：
+1. 先查询数据库中的历史数据和用户偏好
+2. 如果有必要，搜索相关相似内容作为参考
+3. 调用 suggest_topics 生成最终选题
+4. 选题要包含：标题、推荐理由、热度评分、竞争度、时效性、标签`
+}
+
+ipcMain.handle('topic-agent-run', async (event, platform: string, mode: string) => {
+  if (topicAgentLock) {
+    return { error: 'Agent 正在处理中，请稍候' }
+  }
+  topicAgentLock = true
+
+  try {
+    const Agent = require('../knower-agent/agent/core')
+    const settings = readSettings()
+    const activeAccount = await db.getActiveAccount()
+    const agent = new Agent({
+      apiKey: settings.apiKey as string,
+      model: (settings.model as string) || 'claude-sonnet-4-20250514',
+      baseUrl: (settings.baseUrl as string) || '',
+      provider: (settings.apiProvider as string) || 'claude',
+      temperature: typeof settings.temperature === 'number' ? settings.temperature : 0.7,
+      maxTokens: typeof settings.maxTokens === 'number' ? settings.maxTokens : 4096,
+      contentStyle: (settings.contentStyle as string) || '',
+      scriptDuration: (settings.scriptDuration as string) || '',
+      defaultLanguage: (settings.defaultLanguage as string) || '',
+      accountId: activeAccount?.id || 'default',
+      accountName: activeAccount?.name || '',
+      accountPlatform: activeAccount?.platform || '',
+      accountUid: activeAccount?.uid || '',
+      _suggestingMode: true,
+    })
+
+    const prompt = buildTopicPrompt(platform, mode)
+    const abortController = new AbortController()
+    topicAbortController = abortController
+
+    for await (const evt of agent.stream(prompt, {
+      platforms: [platform],
+      signal: abortController.signal,
+    })) {
+      event.sender.send('topic-agent-event', JSON.stringify(evt))
+    }
+    event.sender.send('topic-agent-event', JSON.stringify({ type: 'done' }))
+  } catch (err: unknown) {
+    if (topicAbortController?.signal.aborted) {
+      event.sender.send('topic-agent-event', JSON.stringify({ type: 'done' }))
+    } else {
+      const message = err instanceof Error ? err.message : String(err)
+      console.error('[TopicAgent] 失败:', message)
+      try { event.sender.send('topic-agent-event', JSON.stringify({ type: 'error', message })) } catch {}
+    }
+  } finally {
+    topicAbortController = null
+    topicAgentLock = false
+  }
+})
+
+ipcMain.handle('topic-agent-stop', () => {
+  if (topicAbortController) {
+    topicAbortController.abort()
+    topicAbortController = null
+  }
+  return true
+})
+
+// ============================================================
 //  检查点管理
 // ============================================================
 

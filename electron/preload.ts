@@ -33,6 +33,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('agent-event', handler)
     return () => ipcRenderer.removeListener('agent-event', handler)
   },
+  // 灵感库 Agent（独立 channel）
+  runTopicAgent: (platform: string, mode: string) =>
+    ipcRenderer.invoke('topic-agent-run', platform, mode),
+  stopTopicAgent: () => ipcRenderer.invoke('topic-agent-stop'),
+  onTopicAgentEvent: (callback: (event: string) => void) => {
+    const handler = (_event: unknown, data: string) => callback(data)
+    ipcRenderer.on('topic-agent-event', handler)
+    return () => ipcRenderer.removeListener('topic-agent-event', handler)
+  },
   // 会话
   listConversations: () => ipcRenderer.invoke('conv-list'),
   createConversation: (title: string) => ipcRenderer.invoke('conv-create', title),

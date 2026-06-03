@@ -23,15 +23,14 @@ const PLATFORMS = [
   { key: 'xhs', label: '小红书' },
 ] as const
 
-const THINKING_STEPS = [
-  '检查 API Key...',
-  '查询历史数据...',
-  '查询平台趋势...',
-  '查询用户偏好...',
-  '正在获取平台实时热点...',
-  'AI 正在生成选题...',
-  '解析选题结果...',
-]
+interface AgentEvent {
+  type: string
+  name?: string
+  message?: string
+  input?: Record<string, unknown>
+  result?: unknown
+  text?: string
+}
 
 export default function TopicsView({ onSendToChat }: Props) {
   const [viewState, setViewState] = useState<ViewState>('initial')
@@ -41,8 +40,8 @@ export default function TopicsView({ onSendToChat }: Props) {
   const [topics, setTopics] = useState<TopicSuggestion[]>([])
   const [showHistory, setShowHistory] = useState(false)
   const [history, setHistory] = useState<TopicHistory[]>([])
-  const [progressMessages, setProgressMessages] = useState<string[]>([])
   const [thinkingComplete, setThinkingComplete] = useState(false)
+  const [agentEvents, setAgentEvents] = useState<AgentEvent[]>([])
   const [error, setError] = useState<string | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const { isWindows } = usePlatform()
@@ -88,74 +87,62 @@ export default function TopicsView({ onSendToChat }: Props) {
     }
   }, [])
 
-  // Simulate thinking progress
-  const runThinkingAnimation = useCallback(() => {
-    setProgressMessages([])
-    setThinkingComplete(false)
-    let step = 0
-    const timer = setInterval(() => {
-      if (step < THINKING_STEPS.length) {
-        setProgressMessages(prev => [...prev, THINKING_STEPS[step]])
-        step++
-      } else {
-        clearInterval(timer)
-      }
-    }, 600)
-    return () => clearInterval(timer)
-  }, [])
+  // Agent event listener for topic generation
+  useEffect(() => {
+    if (!api) return
+    const unsub = api.onTopicAgentEvent((raw) => {
+      try {
+        const evt: AgentEvent = JSON.parse(raw)
+        setAgentEvents(prev => [...prev, evt])
 
-  // Real API call
-  const callSuggestTopics = useCallback(async () => {
-    if (!api) {
-      setError('Electron IPC 不可用')
-      setViewState('initial')
-      return
-    }
-    try {
-      const result = await api.suggestTopics(platform)
-      if (result.error) {
-        setError(result.error)
-        showToast(`生成失败: ${result.error}`, 'error')
-        setViewState('initial')
-        return
-      }
-      if (result.topics?.length) {
-        setTopics(result.topics)
-        setThinkingComplete(true)
-        loadHistory()
-        // Small delay so user sees "完成" state
-        setTimeout(() => {
-          transitionTo('results')
-        }, 500)
-      } else {
-        setError('暂无可用选题')
-        showToast('暂无可用选题', 'error')
-        setViewState('initial')
-      }
-    } catch {
-      setError('生成失败，请重试')
-      showToast('生成失败，请重试', 'error')
-      setViewState('initial')
-    }
-  }, [api, platform, loadHistory, showToast, transitionTo])
+        // Extract topics from suggest_topics tool result
+        if (evt.type === 'tool_result' && evt.name === 'suggest_topics') {
+          const result = typeof evt.result === 'string' ? JSON.parse(evt.result) : evt.result
+          if (result.topics?.length) {
+            setTopics(result.topics)
+            setThinkingComplete(true)
+            loadHistory()
+            setTimeout(() => transitionTo('results'), 500)
+          }
+        }
+
+        if (evt.type === 'error') {
+          setError(evt.message || 'Agent 执行失败')
+          showToast(`生成失败: ${evt.message}`, 'error')
+          setViewState('initial')
+        }
+
+        if (evt.type === 'done' && !thinkingComplete) {
+          // Agent finished but no topics were extracted
+          setError('Agent 未返回选题')
+          setViewState('initial')
+        }
+      } catch { /* ignore parse errors */ }
+    })
+    return unsub
+  }, [api, loadHistory, showToast, transitionTo, thinkingComplete])
 
   // Handlers
-  const handleInitialSubmit = useCallback((_input: string, _mode: string) => {
+  const handleInitialSubmit = useCallback((_input: string, mode: string) => {
     setError(null)
+    setAgentEvents([])
+    setThinkingComplete(false)
     transitionTo('thinking')
-    const cleanup = runThinkingAnimation()
-    // Start real API call (fire and forget — results arrive via callSuggestTopics)
-    callSuggestTopics().then(() => cleanup()).catch(() => cleanup())
-  }, [transitionTo, runThinkingAnimation, callSuggestTopics])
+    // Start Agent via independent channel
+    api?.runTopicAgent(platform, mode)
+  }, [api, platform, transitionTo])
 
   const handleThinkingSkip = useCallback(() => {
     // If API already returned, just go to results
     if (topics.length > 0) {
       setThinkingComplete(true)
       transitionTo('results')
+    } else {
+      // Stop the Agent
+      api?.stopTopicAgent()
+      setViewState('initial')
     }
-    // Otherwise let the API continue in background
-  }, [topics.length, transitionTo])
+  }, [topics.length, transitionTo, api])
 
   const handleTopicSelect = useCallback((idx: number) => {
     setSelectedTopicIdx(idx)
@@ -254,7 +241,7 @@ export default function TopicsView({ onSendToChat }: Props) {
           <ThinkingState
             onSkip={handleThinkingSkip}
             onBack={goBack}
-            progressMessages={progressMessages}
+            agentEvents={agentEvents}
             isComplete={thinkingComplete}
           />
         )}
