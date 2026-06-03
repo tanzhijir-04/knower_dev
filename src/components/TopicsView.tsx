@@ -97,7 +97,6 @@ export default function TopicsView({ onSendToChat }: Props) {
     const unsub = api.onTopicAgentEvent((raw) => {
       try {
         const evt: AgentEvent = JSON.parse(raw)
-        console.log('[TopicAgent]', evt.type, evt.name || '', evt)
         setAgentEvents(prev => [...prev, evt])
 
         // Extract topics from suggest_topics tool result

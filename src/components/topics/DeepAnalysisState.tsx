@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react'
+import { useRef, useEffect, useMemo } from 'react'
 import ReactECharts from 'echarts-for-react'
 import { ArrowLeft, VideoCamera, Clock, Calendar } from '@phosphor-icons/react'
 import { staggerIn } from '../../lib/gsap'
@@ -10,32 +10,19 @@ interface Props {
   onStartCreate: () => void
 }
 
-const MOCK_STRATEGY = [
-  { icon: VideoCamera, label: '形式', value: '短视频' },
-  { icon: Clock, label: '时长', value: '60s - 90s' },
-  { icon: Calendar, label: '发布时间', value: '18:00 - 20:00' },
-]
+const STRATEGY_ICONS = [VideoCamera, Clock, Calendar]
 
-const MOCK_OUTLINE = [
-  { title: '开头 (Hook)', desc: '抛出痛点：你是否也觉得家里的旧家电越用越累？展示智能家居带来的改变...' },
-  { title: '核心观点 (Core Points)', desc: '提升生活效率：全屋智能语音控制实测；改善居住体验：氛围灯光与温控自动化；节能环保：智能插座的省钱账单' },
-  { title: '结尾 (Ending)', desc: '引导点赞评论：你最想拥有哪件智能单品？预告下期深度测评内容。' },
-]
-
-const MOCK_TITLES = [
-  '2024年，这几样智能家居真的能提升幸福感！',
-  '装修党必看：值得无限回购的智能家居好物清单',
-  '告别智商税，这些智能家居让你的生活更轻松',
-]
-
-function getChartOption() {
-  const months = ['1月', '2月', '3月', '4月', '5月', '6月']
-  const data = [80, 75, 85, 60, 70, 92]
+function getChartOption(trendData?: { month: string; value: number }[]) {
+  const data = trendData || [
+    { month: '1月', value: 60 }, { month: '2月', value: 55 },
+    { month: '3月', value: 65 }, { month: '4月', value: 50 },
+    { month: '5月', value: 70 }, { month: '6月', value: 80 },
+  ]
   return {
     grid: { top: 10, right: 10, bottom: 24, left: 36 },
     xAxis: {
       type: 'category',
-      data: months,
+      data: data.map(d => d.month),
       axisLine: { lineStyle: { color: '#e6e5e0' } },
       axisTick: { show: false },
       axisLabel: { color: '#807d72', fontSize: 11 },
@@ -47,7 +34,7 @@ function getChartOption() {
     },
     series: [{
       type: 'line',
-      data,
+      data: data.map(d => d.value),
       smooth: true,
       symbol: 'circle',
       symbolSize: 6,
@@ -67,8 +54,31 @@ function getChartOption() {
   }
 }
 
+const FALLBACK_OUTLINE = [
+  { title: '开头 (Hook)', desc: '抛出痛点问题，引发观众共鸣，展示核心价值' },
+  { title: '核心观点 (Core)', desc: '展开论述，提供干货内容，用数据和案例支撑' },
+  { title: '结尾 (Ending)', desc: '总结要点，引导互动，预告下期内容' },
+]
+
+const FALLBACK_STRATEGY = [
+  { label: '形式', value: '短视频' },
+  { label: '时长', value: '60s - 90s' },
+  { label: '发布时间', value: '18:00 - 20:00' },
+]
+
+const FALLBACK_TITLES = [
+  '这个方法真的有效，不信你试试',
+  '90%的人都不知道的技巧',
+  '后悔没早点知道的真相',
+]
+
 export default function DeepAnalysisState({ topic, onBack, onStartCreate }: Props) {
   const gridRef = useRef<HTMLDivElement>(null)
+
+  const outline = topic.outline?.length ? topic.outline : FALLBACK_OUTLINE
+  const strategy = topic.strategy?.length ? topic.strategy : FALLBACK_STRATEGY
+  const titles = topic.alternateTitles?.length ? topic.alternateTitles : FALLBACK_TITLES
+  const chartOption = useMemo(() => getChartOption(topic.trendData), [topic.trendData])
 
   useEffect(() => {
     if (gridRef.current) {
@@ -96,32 +106,39 @@ export default function DeepAnalysisState({ topic, onBack, onStartCreate }: Prop
           {/* Row 1: Why Recommended + Strategy */}
           <div className="col-span-7">
             <div className="bg-surface border border-hairline rounded-lg p-6 h-full">
-              {/* Header */}
               <div className="flex justify-between items-center mb-6">
                 <div>
                   <h3 className="text-title-md text-ink">为什么推荐</h3>
-                  <p className="text-caption text-muted">增长趋势分析</p>
+                  <p className="text-caption text-muted">{topic.reason}</p>
                 </div>
                 <div className="text-right">
                   <p className="text-caption text-muted">热度得分</p>
-                  <p className="text-title-md text-primary">{topic.overallScore || 92}/100</p>
+                  <p className="text-title-md text-primary">{topic.overallScore || 0}/100</p>
                 </div>
               </div>
 
-              {/* ECharts area chart */}
               <div className="mb-4">
                 <ReactECharts
-                  option={getChartOption()}
+                  option={chartOption}
                   style={{ height: 200 }}
                   opts={{ renderer: 'svg' }}
                 />
               </div>
 
-              {/* Metrics */}
               <div className="flex justify-between text-caption text-muted">
-                <span>近期发布: <span className="text-ink font-medium">5.2K</span></span>
-                <span>互动率: <span className="text-ink font-medium">15.3%</span></span>
-                <span>潜在播放: <span className="text-ink font-medium">80K - 120K</span></span>
+                {topic.scores ? (
+                  <>
+                    <span>热度: <span className="text-ink font-medium">{topic.scores.heat}</span></span>
+                    <span>可行性: <span className="text-ink font-medium">{topic.scores.feasibility}</span></span>
+                    <span>契合度: <span className="text-ink font-medium">{topic.scores.fit}</span></span>
+                  </>
+                ) : (
+                  <>
+                    <span>来源: <span className="text-ink font-medium">{topic.source}</span></span>
+                    <span>预估: <span className="text-ink font-medium">{topic.estimatedPerformance}</span></span>
+                    <span>时效: <span className="text-ink font-medium">{topic.urgency || '长期'}</span></span>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -130,16 +147,19 @@ export default function DeepAnalysisState({ topic, onBack, onStartCreate }: Prop
             <div className="bg-surface border border-hairline rounded-lg p-6 h-full">
               <h3 className="text-title-md text-ink mb-8">内容策略</h3>
               <div className="grid grid-cols-3 gap-4 text-center">
-                {MOCK_STRATEGY.map((item, i) => (
+                {strategy.map((item, i) => (
                   <div key={i} className="space-y-2">
                     <div className="mx-auto w-10 h-10 border border-hairline flex items-center justify-center rounded-md text-primary">
-                      <item.icon className="w-5 h-5" />
+                      {(() => { const Icon = STRATEGY_ICONS[i % STRATEGY_ICONS.length]; return <Icon className="w-5 h-5" /> })()}
                     </div>
                     <p className="text-caption text-muted">{item.label}</p>
                     <p className="text-body-sm text-ink font-medium">{item.value}</p>
                   </div>
                 ))}
               </div>
+              {topic.actionPlan && (
+                <p className="text-caption text-muted mt-6 text-center">{topic.actionPlan}</p>
+              )}
             </div>
           </div>
 
@@ -148,7 +168,7 @@ export default function DeepAnalysisState({ topic, onBack, onStartCreate }: Prop
             <div className="bg-surface border border-hairline rounded-lg p-6">
               <h3 className="text-title-md text-ink mb-6">建议大纲</h3>
               <div className="space-y-6">
-                {MOCK_OUTLINE.map((section, i) => (
+                {outline.map((section, i) => (
                   <div key={i}>
                     <div className="flex items-center gap-2 text-primary mb-2">
                       <span className="w-1.5 h-1.5 rounded-full bg-primary" />
@@ -165,7 +185,7 @@ export default function DeepAnalysisState({ topic, onBack, onStartCreate }: Prop
             <div className="bg-surface border border-hairline rounded-lg p-6 h-full">
               <h3 className="text-title-md text-ink mb-6">备选标题</h3>
               <div className="space-y-3">
-                {MOCK_TITLES.map((title, i) => (
+                {titles.map((title, i) => (
                   <div
                     key={i}
                     className="p-3 border border-hairline rounded-md text-body-sm text-ink hover:border-primary transition-colors cursor-pointer"

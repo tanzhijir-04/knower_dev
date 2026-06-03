@@ -247,6 +247,10 @@ ${seriesHint}
 - urgency: 时效性（"24h"/"3天"/"长期"）
 - competitionLevel: 竞争度（"低"/"中"/"高"）
 - actionPlan: 行动建议（一句话）
+- outline: 内容大纲数组，每项包含 title（如"开头 Hook"）和 desc（具体描述，30字以内），共3-4段
+- strategy: 内容策略数组，每项包含 label（如"形式"/"时长"/"发布时间"）和 value（如"短视频"/"60-90s"/"18:00-20:00"），共3项
+- alternateTitles: 备选标题数组，3个不同角度的标题
+- trendData: 趋势数据数组，每项包含 month（如"1月"）和 value（0-100的热度值），共6个月
 
 返回 JSON 数组，不要有其他文字。`
       } else {
@@ -279,6 +283,10 @@ ${seriesHint}
 - urgency: 时效性（"24h"/"3天"/"长期"）
 - competitionLevel: 竞争度（"低"/"中"/"高"）
 - actionPlan: 行动建议（一句话）
+- outline: 内容大纲数组，每项包含 title 和 desc（3-4段）
+- strategy: 内容策略数组，每项包含 label 和 value（3项：形式/时长/发布时间）
+- alternateTitles: 备选标题数组（3个）
+- trendData: 趋势数据数组，每项包含 month 和 value（6个月）
 
 返回 JSON 数组，不要有其他文字。`
       }

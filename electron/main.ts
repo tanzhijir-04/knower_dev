@@ -363,8 +363,6 @@ ipcMain.handle('topic-agent-run', async (event, platform: string, mode: string) 
     })
 
     const prompt = buildTopicPrompt(platform, mode)
-    console.log('[TopicAgent] 启动, platform:', platform, 'mode:', mode)
-    console.log('[TopicAgent] prompt:', prompt.slice(0, 100))
     const abortController = new AbortController()
     topicAbortController = abortController
 
@@ -372,7 +370,6 @@ ipcMain.handle('topic-agent-run', async (event, platform: string, mode: string) 
       platforms: [platform],
       signal: abortController.signal,
     })) {
-      console.log('[TopicAgent] event:', evt.type, evt.name || '')
       event.sender.send('topic-agent-event', JSON.stringify(evt))
     }
     event.sender.send('topic-agent-event', JSON.stringify({ type: 'done' }))

@@ -208,6 +208,11 @@ export interface TopicSuggestion {
   overallScore?: number
   urgency?: string
   competitionLevel?: string
+  actionPlan?: string
+  outline?: { title: string; desc: string }[]
+  strategy?: { label: string; value: string }[]
+  alternateTitles?: string[]
+  trendData?: { month: string; value: number }[]
 }
 
 export interface SavedTopic extends TopicSuggestion {
