@@ -1,123 +1,158 @@
-# AGENTS.md
+本文档帮助任何参与开发的 AI Agent 快速理解项目上下文和当前进度。
 
-This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
+## 项目一句话
 
-## 项目概述
+知更 Knower 是一个 Electron 桌面应用，帮视频创作者用 AI 生成多平台发布物料。用户自己的 API key，数据全在本地。
 
-知更 Knower — 面向个人视频创作者（B站/抖音/小红书）的本地 AI 桌面工作流客户端。帮助从选题到发布，生成多平台发布物料（脚本、标题、标签、封面文案等）。用户自带 API key，数据全在本地，不经过第三方服务器。
+## 当前状态
 
-## 构建命令
+**阶段：M1+M2 已完成，正在推进 REFACTOR-PRD 四阶段优化**
 
-```bash
-npm run dev       # 启动开发（Vite HMR + Electron 热重载）
-npm run build     # tsc 类型检查 + Vite 打包 + electron-builder 打包
-npm run preview   # 预览前端产物
-```
+创作台、数据概览、灵感库、全网热点、设置页五个页面均已实现。Agent Core 具备完整的 ReAct 循环、状态机、8 个工具、双协议 LLM 适配、错误重试。多创作者隔离已完成。爬虫（MediaCrawler）和爆款评分模块已集成。
 
-## 技术栈
+## 技术栈（严格限定）
 
-- Electron 33 + React 18 + TypeScript 5.6（strict mode）
-- Vite 6 + `vite-plugin-electron`（主进程/preload 分别构建到 `dist-electron/`）
-- Tailwind CSS 3.4，暗色主题，配色复用 STITCH 原型
-- 路径别名 `@` → `./src`（vite.config.ts 中定义）
-- 无测试框架、无 linter 已配置
+仅使用以下技术，不要引入列表之外的框架：
+
+| 层 | 技术 |
+|---|---|
+| 前端 | React 18 + TypeScript 5.6 + Tailwind CSS 3.4 |
+| 图标 | @phosphor-icons/react |
+| 图表 | echarts-for-react |
+| 动画 | gsap |
+| Markdown | react-markdown |
+| Electron | Electron 33 |
+| 构建 | Vite 6 + vite-plugin-electron |
+| AI | @anthropic-ai/sdk（Anthropic）+ 原生 fetch（OpenAI-compat） |
+| 数据库 | sql.js（SQLite WASM） |
+| 爬虫 | MediaCrawler（Python 子进程） |
+
+禁止：react-router、zustand/redux、LangChain、Prisma、axios、前端直接 import Node 模块。
+
+## 文件职责速查
+
+| 文件 | 干什么的 | 改动频率 |
+|------|----------|----------|
+| `electron/main.ts` | 主进程，所有 IPC handler | 中 |
+| `electron/preload.ts` | 暴露 electronAPI | 低 |
+| `src/App.tsx` | 页面路由（useState）、gsap 动画、Toast | 中 |
+| `src/types/electron.d.ts` | 前端类型定义 + ElectronAPI 接口 | 中 |
+| `src/components/ChatView.tsx` | 创作台（核心页面） | 高 |
+| `src/components/DataView.tsx` | 数据概览 | 中 |
+| `src/components/TrendingView.tsx` | 全网热点 | 低 |
+| `src/components/TopicsView.tsx` | 灵感库 | 中 |
+| `src/components/SettingsView.tsx` | 设置页 | 低 |
+| `src/components/Sidebar.tsx` | 侧边栏导航 | 低 |
+| `src/components/AccountSwitcher.tsx` | 创作者切换器 | 低 |
+| `src/components/MaterialCards.tsx` | 物料卡片展示 | 中 |
+| `src/components/data/*.tsx` | 数据图表（6 个组件） | 低 |
+| `src/components/topics/*.tsx` | 灵感库子组件（7 个） | 中 |
+| `src/contexts/*.tsx` | React Context（3 个） | 低 |
+| `knower-agent/agent/core.js` | Agent ReAct 主循环 | 中 |
+| `knower-agent/agent/state.js` | 状态机 | 低 |
+| `knower-agent/agent/router.js` | 动作路由 | 低 |
+| `knower-agent/agent/processor.js` | 工具结果处理 | 中 |
+| `knower-agent/agent/tools/*.js` | 8 个工具 | 中 |
+| `knower-agent/llm/*.js` | LLM 适配层 | 低 |
+| `knower-agent/db/index.js` | 数据库层（14 张表 + CRUD） | 高 |
+| `knower-agent/config/index.js` | 配置读取 | 低 |
+| `knower-agent/prompts/system-prompt.js` | Agent 系统提示词 | 中 |
+| `knower-agent/lib/crawler.js` | 爬虫封装 | 低 |
+| `knower-agent/lib/trending.js` | 热点数据 | 低 |
+| `knower-agent/virality-score/` | 爆款评分 | 低 |
 
 ## 架构要点
 
-**页面路由：** `App.tsx` 用 `useState<Page>` 手动切换（非 react-router），四个页面：chat（创作台）/ topics（灵感库）/ data（数据分析）/ settings（设置）。
+### Agent 核心
 
-**Electron IPC：** 渲染进程 → preload（`contextBridge`）→ main，`contextIsolation: true`，`nodeIntegration: false`。preload 暴露 `window.electronAPI`（`getStore` / `setStore`）。main.ts 中 IPC handler 目前是 stub。
+用户输入
+→ core.js stream() 主循环
+→ buildSystemPrompt()（注入 memories 记忆 + 创作者身份）
+→ LLM 调用（Anthropic SDK 或 OpenAI-compat fetch）
+→ router.js 判断下一步动作
+→ tools/*.js 执行工具（带 executeToolWithRetry + executeWithTimeout）
+→ processor.js 更新 AgentState
+→ 循环直到 done 或达到 MAX_ITERATIONS=10
+→ 流式返回事件（text / tool_call / tool_result / form_request / done）
 
-**API 调用约定：** 所有 AI 调用统一使用 OpenAI-compatible `/v1/chat/completions` 格式，通过 raw `fetch` 调用，不用各家 SDK。需支持 SSE 流式输出。
 
-**样式：** 所有颜色定义在 `tailwind.config.js`，组件中不硬编码 hex 值。自定义组件类在 `src/index.css`（sidebar-btn, chat-bubble, suggestion-card, input-bar）。字体：JetBrains Mono（正文）、Source Serif 4（标题）、Material Symbols Outlined（图标，Google Fonts CDN）。
+### 状态机（state.js）
 
-## 关键文件
+idle → crawling / analyzing / querying / suggesting → generating → saving → done
 
-| 文件 | 职责 |
-|------|------|
-| `electron/main.ts` | 主进程：窗口创建（1200x800, macOS hiddenInset）、IPC handler |
-| `electron/preload.ts` | 暴露 electronAPI 给渲染进程 |
-| `src/App.tsx` | 页面路由（`Page` 类型） |
-| `src/components/ChatView.tsx` | 创作台聊天界面，**MVP 核心** |
-| `knower-agent/` | Agent Core 子项目（Node.js，独立于 Electron） |
-| `knower-agent/crawler/` | **爬虫模块**（MediaCrawler 集成，支持 B站/抖音/小红书/微博） |
-| `knower-agent/lib/crawler.js` | 爬虫 Node.js 封装（子进程调用 Python） |
-| `src/components/SettingsView.tsx` | API 配置页（provider/key/baseUrl/model） |
-| `src/index.css` | Tailwind 组件样式 + 滚动条 + macOS 拖拽区域 |
-| `tailwind.config.js` | 全部颜色和字体定义 |
-| `AGENT.md` | AI agent 协作指南（文件职责、技术决策、分支约定） |
+每个阶段有合法的目标转换，非法转换会抛错。
+
+### 数据库（db/index.js）
+
+14 张表，全部支持 account_id 多创作者隔离。sql.js WASM 实现，无原生依赖。
+
+### IPC 通信
+
+渲染进程 → preload（contextBridge）→ main.ts IPC handler → Agent/DB/爬虫 → 事件流返回。
+
+## 工具检查流程
+
+收到用户消息后，检查当前状态上下文：
+1. 如果上下文中有爬取数据 → 直接分析，不要重新爬取
+2. 如果上下文中有分析结果 → 直接生成物料，不要重新分析
+3. 如果上下文中有物料 → 直接保存，不要重新生成
+4. 如果缺少必要信息 → 调用 request_user_input 请求
+
+## 红旗表
+
+- "用户没给UID，我猜一个" → 不要猜，调用 request_user_input
+- "我知道这个UP主的数据" → 你不知道，看上下文中有没有爬取数据
+- "脚本我理解了，直接生成物料" → 先调用 analyze_script
+- "数据是空的，我编一些" → 绝对禁止编造数据
+- "这次不保存了吧" → 必须保存，除非用户明确说不要
 
 ## 开发阶段
 
 ### 已完成
-- 项目骨架（Electron + React + TS + Vite）
-- 暗色主题 UI，侧边栏导航，聊天界面基础组件，设置页，占位页
-- Agent Core 子项目（knower-agent/）：tool use 主循环、流式输出、SQLite 存储
+- 项目骨架 + 暗色主题 UI + 侧边栏 + gsap 动画
+- Agent Core：状态机 + 路由器 + 8 个工具 + 流式输出 + 错误重试 + 超时控制
+- LLM 双协议适配（Anthropic + OpenAI-compat）
+- 创作台：流式输出、对话历史、物料卡片、文件导入
+- 数据概览：来源管理、AI 分析（含缓存）、AI 分类、6 种图表、导出、创作者管理
+- 全网热点：多平台聚合
+- 灵感库：选题生成、趋势面板、竞品追踪、雷达评分
+- 设置页：API 配置、连接测试、创作者管理
+- 多创作者隔离（account_id 全表覆盖）
+- 爬虫（MediaCrawler）+ 爆款评分
+- 记忆系统（自进化闭环）
 
-### 待开发（按优先级）
-1. **创作台接入 Agent** — ChatView 通过 IPC 调用 Agent Core，SSE 流式展示物料
-2. **electron-store 持久化** — 设置页配置项本地保存（main.ts IPC handler 待实现）
-3. **输出物料展示** — 结构化展示各平台物料，支持复制导出
-4. **脚本输入体验** — 富文本编辑、文件导入
+### 下一步（按优先级）
+1. **RAG 语义检索** — vectra 向量存储 + embedding API + search_similar 工具
+2. **可观测性面板** — Agent 执行追踪时间线 + 实时状态指示器
+3. **断点续跑** — 崩溃后从检查点恢复
 
-### 后续阶段（PRD 第二、三期）
-- ~~Chrome CDP 数据采集模块~~ ✅ 已集成 MediaCrawler
-- SQLite 本地数据存储
-- AI 选题建议（基于历史数据分析爆款规律）
+### 参考文档
+- `docs/knower_prd_v2.md` — 产品 PRD
+- `docs/REFACTOR-PRD.md` — Agent 增量重构 PRD（四阶段）
+- `PLAN.md` — 重构实施计划
+- `docs/task_board.md` — 全局任务清单（部分内容已过时）
+- `docs/improvement_plan.md` — 全量改进计划 P0-P8
 
-## 爬虫模块（已集成）
+## 不要动的
 
-MediaCrawler 多平台爬虫已集成到 `knower-agent/crawler/`，支持 B站、抖音、小红书、微博 四个平台。
+- `tailwind.config.js` 的颜色体系
+- Electron 窗口配置（main.ts）
+- preload 的 API 暴露方式
+- `knower-agent/crawler/mediasrc/` 内部文件
 
-### 初始化
+## 分支约定
 
-```bash
-cd knower-agent/crawler
-setup_env.bat  # 创建 venv + 安装依赖 + 安装 Playwright
-```
+- `main` — 稳定版本
+- `dev` — 开发中
+- 功能分支：`feat/xxx`
 
-### 使用方式
+## 提交信息格式
 
-```javascript
-// Node.js 调用
-const { runCrawler } = require('./knower-agent/lib/crawler');
-const result = await runCrawler('bili', '关键词', { maxNotes: 10 });
+type(scope): 简短描述
 
-// Electron IPC 调用
-const result = await window.electronAPI.runCrawler('bili', '关键词', { maxNotes: 10 });
-```
+feat(chat): 接入 streaming API
+fix(settings): 修复 provider 切换后 baseUrl 未更新
+refactor(api): 抽取通用 fetch 函数
 
-### 平台参数
 
-| 平台 | platform 值 | 说明 |
-|------|------------|------|
-| B站 | `bili` | 支持 `specifiedId`, `creatorId` |
-| 抖音 | `dy` | 需要 Node.js（JS 签名） |
-| 小红书 | `xhs` | - |
-| 微博 | `wb` | - |
-
-### 数据库表
-
-新增 `crawl_tasks` 和 `crawl_content` 表，自动存储爬取结果到 `knower.db`。
-
-### 注意事项
-
-1. 首次运行需扫码登录，登录状态保存在 `mediasrc/login_state/`
-2. 建议 `ENABLE_CDP_MODE = False`（除非有远程调试 Chrome）
-3. `.gitignore` 已排除 `.venv/`、`data/`、`*_user_data_dir/`、`login_state/`
-
-## 重要约定
-
-- 所有 AI 调用使用 OpenAI-compatible API 格式，用户自配 key，不硬编码
-- 数据全部本地存储，不经过任何第三方服务器
-- 每个功能模块独立，互不耦合
-- 代码开源（MIT 协议）
-
-## 提交约定
-
-分支：`main`（稳定）/ `dev`（开发）/ `feat/xxx`（功能分支）
-
-提交格式：`type(scope): 描述`
-- type: feat / fix / refactor / style / docs / chore
-- 示例: `feat(chat): 接入 streaming API`
+type: feat / fix / refactor / style / docs / chore
