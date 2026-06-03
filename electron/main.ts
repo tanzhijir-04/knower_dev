@@ -92,6 +92,20 @@ ipcMain.handle('window-maximize', () => {
 ipcMain.handle('window-close', () => mainWindow?.close())
 
 // ============================================================
+//  数据库维护
+// ============================================================
+
+ipcMain.handle('db-vacuum', async () => {
+  try {
+    await db.vacuumDb()
+    return { success: true }
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err)
+    return { success: false, error: message }
+  }
+})
+
+// ============================================================
 //  IPC 安全包装器
 // ============================================================
 
@@ -318,13 +332,7 @@ function buildTopicPrompt(platform: string, mode: string) {
     competitor: '竞品对标',
     series: '系列化规划',
   }
-  return `请为 ${platformMap[platform] || platform} 平台生成 5 个高潜力选题。模式：${modeMap[mode] || '热点趋势'}。
-
-要求：
-1. 先查询数据库中的历史数据和用户偏好
-2. 如果有必要，搜索相关相似内容作为参考
-3. 调用 suggest_topics 生成最终选题
-4. 选题要包含：标题、推荐理由、热度评分、竞争度、时效性、标签`
+  return `请调用 suggest_topics 工具为 ${platformMap[platform] || platform} 平台生成选题。参数：platform="${platform}", mode="${mode}", count=5。`
 }
 
 ipcMain.handle('topic-agent-run', async (event, platform: string, mode: string) => {
@@ -355,6 +363,8 @@ ipcMain.handle('topic-agent-run', async (event, platform: string, mode: string) 
     })
 
     const prompt = buildTopicPrompt(platform, mode)
+    console.log('[TopicAgent] 启动, platform:', platform, 'mode:', mode)
+    console.log('[TopicAgent] prompt:', prompt.slice(0, 100))
     const abortController = new AbortController()
     topicAbortController = abortController
 
@@ -362,6 +372,7 @@ ipcMain.handle('topic-agent-run', async (event, platform: string, mode: string) 
       platforms: [platform],
       signal: abortController.signal,
     })) {
+      console.log('[TopicAgent] event:', evt.type, evt.name || '')
       event.sender.send('topic-agent-event', JSON.stringify(evt))
     }
     event.sender.send('topic-agent-event', JSON.stringify({ type: 'done' }))

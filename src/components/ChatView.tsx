@@ -355,6 +355,7 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
     setCanvasData(null)
     setAgentFormRequest(null)
     animatedMsgIdsRef.current.clear()
+    savedMsgIdsRef.current.clear()
   }, [activeAccountId])
 
   const scrollToBottom = () => {
@@ -546,6 +547,13 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
     return () => unsubscribe()
   }, [])
 
+  // Use ref for onConversationChange to avoid effect dependency loop
+  const onConversationChangeRef = useRef(onConversationChange)
+  onConversationChangeRef.current = onConversationChange
+
+  // Track which assistant messages have already been saved to DB
+  const savedMsgIdsRef = useRef(new Set<string>())
+
   const saveMessages = useCallback(async (convId: number, msgs: Message[]) => {
     const api = window.electronAPI
     if (!api) return
@@ -642,9 +650,12 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
     if (isStreaming || !conversationId || messages.length === 0) return
     const last = messages[messages.length - 1]
     if (last.role === 'assistant' && last.content) {
-      saveMessages(conversationId, [last]).then(() => onConversationChange?.())
+      // Dedup: skip if this message was already saved
+      if (savedMsgIdsRef.current.has(last.id)) return
+      savedMsgIdsRef.current.add(last.id)
+      saveMessages(conversationId, [last]).then(() => onConversationChangeRef.current?.())
     }
-  }, [isStreaming, conversationId, messages, saveMessages, onConversationChange])
+  }, [isStreaming, conversationId, messages, saveMessages])
 
   const handleStop = async () => {
     await window.electronAPI?.stopAgent()
@@ -666,12 +677,14 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
     setMessages(msgs)
     setConversationId(conv.id)
     animatedMsgIdsRef.current.clear()
+    savedMsgIdsRef.current.clear()
   }
 
   const handleNewChat = () => {
     setMessages([])
     setConversationId(null)
     animatedMsgIdsRef.current.clear()
+    savedMsgIdsRef.current.clear()
   }
 
   const handleExportMessage = (msg: Message) => {

@@ -253,16 +253,13 @@ async function buildSystemPrompt(opts = {}) {
       prompt += `\n\n## 语言要求\n请使用 ${defaultLanguage} 回复和生成物料。`
     }
 
-    // 选题模式：当用户请求生成选题时，引导 Agent 走数据驱动流程
+    // 选题模式：当用户请求生成选题时，直接调用 suggest_topics（它内部已自动查询数据）
     if (opts._suggestingMode) {
       prompt += `\n\n## 选题模式
-你正在为创作者生成选题建议。请按以下流程自主决策工具调用：
-1. 用 query_data 查询该平台的历史数据，了解哪些内容表现好
-2. 用 search_similar 搜索相关高热度内容作为参考
-3. 综合分析后调用 suggest_topics 生成最终选题
-4. 选题要有数据支撑，引用具体数字
+你正在为创作者生成选题建议。请直接调用 suggest_topics 工具完成任务。
+suggest_topics 内部会自动查询历史数据、趋势数据、用户偏好和实时热点，你不需要手动调用其他数据查询工具。
 
-不要跳过数据查询直接生成选题。每一步都要基于真实数据。`
+调用 suggest_topics 时传入平台（platform）参数即可，工具会自动处理其他逻辑。`
     }
 
     setCache(cacheKey, prompt)

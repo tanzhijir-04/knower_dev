@@ -416,6 +416,26 @@ function initTables() {
     )
   `)
 
+  // ============================================================
+  //  一次性清理：去重 messages 表中的重复助手回复
+  // ============================================================
+  try {
+    const cleanMarker = db.exec("SELECT value FROM memories WHERE key = 'synced_clean_v2' AND account_id = '_system'")
+    const alreadyCleaned = cleanMarker.length && cleanMarker[0].values.length > 0
+    if (!alreadyCleaned) {
+      // For each (conversation_id, role, content), keep only the row with smallest id
+      db.exec(`
+        DELETE FROM messages WHERE id NOT IN (
+          SELECT MIN(id) FROM messages GROUP BY conversation_id, role, content
+        )
+      `)
+      db.run(
+        "INSERT OR REPLACE INTO memories (account_id, type, key, value, evidence, weight, created_at, updated_at) VALUES ('_system', 'meta', 'synced_clean_v2', '1', 'message dedup cleanup', 1.0, datetime('now','localtime'), datetime('now','localtime'))"
+      )
+      saveDb()
+    }
+  } catch { /* ignore */ }
+
   // 修复头像：从 crawl_content.raw_json 回补 creators.avatar_url
   try {
     const needAvatar = db.exec(`
@@ -1499,6 +1519,14 @@ async function getCompetitorRecentContent(platform, competitorUids, days = 7, ac
   }))
 }
 
+// --- 数据库维护 ---
+
+async function vacuumDb() {
+  const dbInstance = await getDb()
+  dbInstance.run('VACUUM')
+  flushDb()
+}
+
 module.exports = {
   getDb, saveDb: flushDb, reloadDb, saveScript, getScript, listScripts,
   createConversation, updateConversationTitle, deleteConversation, togglePinConversation,
@@ -1515,4 +1543,5 @@ module.exports = {
   getSourceDetail, getKeywordDetail,
   createAccount, listAccounts, getActiveAccount, switchAccount, updateAccount, deleteAccount,
   addCompetitor, removeCompetitor, getCompetitors, getCompetitorRecentContent,
+  vacuumDb,
 }

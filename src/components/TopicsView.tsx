@@ -44,10 +44,14 @@ export default function TopicsView({ onSendToChat }: Props) {
   const [agentEvents, setAgentEvents] = useState<AgentEvent[]>([])
   const [error, setError] = useState<string | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const thinkingCompleteRef = useRef(false)
   const { isWindows } = usePlatform()
   const { showToast } = useToast()
   const stateHistoryRef = useRef<ViewState[]>([])
   const api = window.electronAPI
+
+  // Keep ref in sync
+  useEffect(() => { thinkingCompleteRef.current = thinkingComplete }, [thinkingComplete])
 
   // Load history
   const loadHistory = useCallback(async () => {
@@ -93,6 +97,7 @@ export default function TopicsView({ onSendToChat }: Props) {
     const unsub = api.onTopicAgentEvent((raw) => {
       try {
         const evt: AgentEvent = JSON.parse(raw)
+        console.log('[TopicAgent]', evt.type, evt.name || '', evt)
         setAgentEvents(prev => [...prev, evt])
 
         // Extract topics from suggest_topics tool result
@@ -102,7 +107,15 @@ export default function TopicsView({ onSendToChat }: Props) {
             setTopics(result.topics)
             setThinkingComplete(true)
             loadHistory()
-            setTimeout(() => transitionTo('results'), 500)
+            // Animate to results
+            const el = containerRef.current
+            if (el) {
+              gsap.fromTo(el,
+                { opacity: 0, y: 12 },
+                { opacity: 1, y: 0, duration: 0.3, ease: 'power2.out', clearProps: 'transform' }
+              )
+            }
+            setTimeout(() => setViewState('results'), 500)
           }
         }
 
@@ -112,15 +125,14 @@ export default function TopicsView({ onSendToChat }: Props) {
           setViewState('initial')
         }
 
-        if (evt.type === 'done' && !thinkingComplete) {
-          // Agent finished but no topics were extracted
+        if (evt.type === 'done' && !thinkingCompleteRef.current) {
           setError('Agent 未返回选题')
           setViewState('initial')
         }
       } catch { /* ignore parse errors */ }
     })
     return unsub
-  }, [api, loadHistory, showToast, transitionTo, thinkingComplete])
+  }, [api, loadHistory, showToast])
 
   // Handlers
   const handleInitialSubmit = useCallback((_input: string, mode: string) => {

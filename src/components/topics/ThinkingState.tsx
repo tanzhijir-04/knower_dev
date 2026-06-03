@@ -1,12 +1,13 @@
-import { useEffect, useRef } from 'react'
-import { TrendUp, MagnifyingGlass, User, FileText, ArrowRight, ArrowLeft, CheckCircle } from '@phosphor-icons/react'
+import { useEffect, useRef, useMemo } from 'react'
+import { TrendUp, MagnifyingGlass, User, FileText, ArrowRight, ArrowLeft, CheckCircle, Spinner } from '@phosphor-icons/react'
 import type { IconProps } from '@phosphor-icons/react'
 import { staggerIn } from '../../lib/gsap'
 
 interface LogEntry {
+  id: string
   icon: React.ComponentType<IconProps>
   text: string
-  status: 'active' | 'done'
+  status: 'active' | 'done' | 'error'
 }
 
 interface AgentEvent {
@@ -23,7 +24,7 @@ const TOOL_LABELS: Record<string, string> = {
   search_similar: '搜索相似内容',
   crawl_data: '爬取平台数据',
   crawl_data_batch: '批量爬取数据',
-  suggest_topics: 'AI 生成选题中',
+  suggest_topics: 'AI 正在生成选题',
   analyze_script: '分析脚本',
   request_user_input: '等待用户输入',
   save_result: '保存结果',
@@ -40,66 +41,62 @@ const TOOL_ICONS: Record<string, React.ComponentType<IconProps>> = {
   save_result: FileText,
 }
 
-const FALLBACK_LOGS: LogEntry[] = [
-  { icon: MagnifyingGlass, text: 'Agent 启动中...', status: 'active' },
-]
-
 function buildLogEntries(events: AgentEvent[], isComplete: boolean): LogEntry[] {
-  if (events.length === 0) return FALLBACK_LOGS
+  if (events.length === 0) {
+    return [{ id: 'boot', icon: Spinner, text: 'Agent 启动中...', status: 'active' }]
+  }
 
-  const logs: LogEntry[] = []
+  // Build entries by tracking tool lifecycle: call → progress → result
+  const toolEntries = new Map<string, LogEntry>()
+  const orderedEntries: LogEntry[] = []
+  const textEntries: LogEntry[] = []
 
   for (const evt of events) {
     if (evt.type === 'tool_call' && evt.name) {
-      const label = TOOL_LABELS[evt.name] || evt.name
-      logs.push({
+      const id = `tool-${evt.name}-${toolEntries.size}`
+      const entry: LogEntry = {
+        id,
         icon: TOOL_ICONS[evt.name] || MagnifyingGlass,
-        text: label,
+        text: TOOL_LABELS[evt.name] || evt.name,
         status: 'active',
-      })
-    } else if (evt.type === 'tool_progress' && evt.message) {
-      // Update the last active entry with progress message
-      if (logs.length > 0) {
-        const last = logs[logs.length - 1]
-        logs.push({
-          icon: last.icon,
-          text: evt.message,
-          status: 'active',
-        })
+      }
+      toolEntries.set(evt.name, entry)
+      orderedEntries.push(entry)
+    } else if (evt.type === 'tool_progress' && evt.name && evt.message) {
+      // Update the active tool entry's text with progress detail
+      const existing = toolEntries.get(evt.name)
+      if (existing) {
+        existing.text = evt.message
       }
     } else if (evt.type === 'tool_result' && evt.name) {
-      const label = TOOL_LABELS[evt.name] || evt.name
-      // Mark previous entries as done, add completion
-      for (const log of logs) {
-        if (log.status === 'active') log.status = 'done'
+      const existing = toolEntries.get(evt.name)
+      if (existing) {
+        existing.status = 'done'
+        existing.icon = CheckCircle
       }
-      logs.push({
-        icon: CheckCircle,
-        text: `${label} — 完成`,
-        status: 'done',
-      })
     } else if (evt.type === 'text' && evt.text) {
-      logs.push({
+      const id = `text-${textEntries.length}`
+      textEntries.push({
+        id,
         icon: FileText,
-        text: evt.text.slice(0, 80) + (evt.text.length > 80 ? '...' : ''),
+        text: evt.text.length > 80 ? evt.text.slice(0, 80) + '...' : evt.text,
         status: 'done',
       })
     }
   }
 
-  if (logs.length === 0) return FALLBACK_LOGS
+  const all = [...orderedEntries, ...textEntries]
 
-  // Mark all as done if complete
-  if (isComplete) {
-    for (const log of logs) log.status = 'done'
-  } else if (logs.length > 0) {
-    // Keep only the last entry as active
-    for (let i = 0; i < logs.length - 1; i++) {
-      if (logs[i].status === 'active') logs[i].status = 'done'
-    }
+  if (all.length === 0) {
+    return [{ id: 'boot', icon: Spinner, text: 'Agent 启动中...', status: 'active' }]
   }
 
-  return logs
+  // If complete, mark all done
+  if (isComplete) {
+    for (const entry of all) entry.status = 'done'
+  }
+
+  return all
 }
 
 interface Props {
@@ -111,12 +108,18 @@ interface Props {
 
 export default function ThinkingState({ onSkip, onBack, agentEvents = [], isComplete = false }: Props) {
   const logRefs = useRef<HTMLDivElement[]>([])
-  const logs = buildLogEntries(agentEvents, isComplete)
+  const prevCountRef = useRef(0)
+  const logs = useMemo(() => buildLogEntries(agentEvents, isComplete), [agentEvents, isComplete])
 
+  // Only animate newly added entries
   useEffect(() => {
     const els = logRefs.current.filter(Boolean)
-    if (els.length) staggerIn(els, { stagger: 0.15, y: 12 })
-  }, [agentEvents.length])
+    const newEls = els.slice(prevCountRef.current)
+    prevCountRef.current = els.length
+    if (newEls.length) staggerIn(newEls, { stagger: 0.12, y: 8 })
+  }, [logs.length])
+
+  const activeIdx = logs.findIndex(l => l.status === 'active')
 
   return (
     <div className="flex-1 flex items-center justify-center px-8">
@@ -143,26 +146,36 @@ export default function ThinkingState({ onSkip, onBack, agentEvents = [], isComp
         <div className="h-1 bg-hairline rounded-full mb-12 relative overflow-hidden">
           <div
             className="h-full bg-primary rounded-full transition-all duration-500"
-            style={{ width: isComplete ? '100%' : `${Math.min(90, 20 + logs.length * 15)}%` }}
+            style={{
+              width: isComplete
+                ? '100%'
+                : activeIdx >= 0
+                  ? `${Math.min(90, 15 + (activeIdx + 1) / Math.max(logs.length, 1) * 75)}%`
+                  : '15%',
+            }}
           />
         </div>
 
         {/* Log entries */}
-        <div className="space-y-6">
+        <div className="space-y-5">
           {logs.map((log, i) => (
             <div
-              key={`${i}-${log.text}`}
+              key={log.id}
               ref={(el) => { logRefs.current[i] = el! }}
               className="flex items-start gap-4"
             >
-              {log.status === 'active' ? (
-                <div className="w-2 h-2 rounded-full bg-primary mt-2 animate-pulse" />
-              ) : (
-                <div className="w-5 h-5 flex items-center justify-center text-primary mt-0.5">
-                  <log.icon className="w-4 h-4" weight="fill" />
-                </div>
-              )}
-              <p className={log.status === 'active' ? 'text-muted animate-pulse' : 'text-body'}>
+              {/* Icon */}
+              <div className="w-5 h-5 flex items-center justify-center shrink-0 mt-0.5">
+                {log.status === 'active' ? (
+                  <Spinner className="w-4 h-4 text-primary animate-spin" />
+                ) : log.status === 'error' ? (
+                  <div className="w-2 h-2 rounded-full bg-semantic-error" />
+                ) : (
+                  <log.icon className="w-4 h-4 text-primary" weight="fill" />
+                )}
+              </div>
+              {/* Text */}
+              <p className={`text-body ${log.status === 'active' ? 'text-muted' : 'text-ink'}`}>
                 {log.text}
               </p>
             </div>
