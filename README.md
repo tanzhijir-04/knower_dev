@@ -12,7 +12,7 @@
   <a href="https://knower-ai.page.dev">官网</a> ·
   <a href="#快速开始">快速开始</a> ·
   <a href="#feature-highlights">功能</a> ·
-  <a href="https://github.com/tanzhijir-04/knower_dev/issues">反馈</a>
+  <a href="https://github.com/tanzhijir-04/knower_dev/issues">反馈</a> · <a href="https://ifdian.net/a/tanz666/plan">☕赞助打赏</a>
 </p>
 
 ---
@@ -189,6 +189,13 @@ fix(settings): 修复 provider 切换后 baseUrl 未更新
 
 type: `feat` / `fix` / `refactor` / `style` / `docs` / `chore`
 
+
+
+## 赞助
+
+如果知更对你有帮助，欢迎请我喝杯咖啡 ☕
+
+[👉 去爱发电赞助](https://ifdian.net/a/tanz666/plan)
 
 ## License
 
