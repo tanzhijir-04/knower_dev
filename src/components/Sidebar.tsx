@@ -4,7 +4,7 @@ import { Chats, ChartBar, SquaresFour, GearSix, TrendUp, PencilSimple, PushPin, 
 import type { ComponentType } from 'react'
 import type { Page } from '../App'
 import type { Message } from '../types/electron'
-import logoSvg from '../../assets/logo-sidebar.svg?url'
+import logoSvg from '../../assets/logo-color.svg?url'
 import AccountSwitcher from './AccountSwitcher'
 
 interface SidebarProps {

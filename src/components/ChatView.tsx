@@ -10,7 +10,7 @@ import { useAccount } from '../contexts/AccountContext'
 import { animateMessage, modalEnter, modalExit, menuEnter } from '../lib/gsap'
 import { Info, FileText, X, StopCircle, ArrowUp, ArrowDown, Plus, UploadSimple, Lightning, ListChecks, Exam, Sparkle, Lightbulb, PencilSimple, ThumbsUp, ThumbsDown, Check, Copy, Export, ArrowsClockwise, Spinner, XCircle, CheckCircle, MagicWand, ChartBar, Download, MagnifyingGlass, Paperclip } from '@phosphor-icons/react'
 import type { ComponentType } from 'react'
-import logoSvg from '../../assets/logo-sidebar.svg?url'
+import logoSvg from '../../assets/logo-color.svg?url'
 
 async function readFileAsText(file: File): Promise<string> {
   return await file.text()
