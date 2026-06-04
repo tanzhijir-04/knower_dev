@@ -11,24 +11,82 @@
 <p align="center">
   <a href="https://knower-ai.page.dev">官网</a> ·
   <a href="#快速开始">快速开始</a> ·
-  <a href="#功能特性">功能</a> ·
+  <a href="#feature-highlights">功能</a> ·
   <a href="https://github.com/tanzhijir-04/knower_dev/issues">反馈</a>
 </p>
 
 ---
 
-**知更**帮助视频创作者（B站 / 抖音 / 小红书 / YouTube）从选题到发布，一键生成多平台发布物料。用户自带 API Key，数据全部本地存储，不经过任何第三方服务器。
+**知更**帮助视频创作者（B站 / 抖音 / 小红书）从选题到发布，一键生成多平台发布物料。用户自带 API Key，数据全部本地存储，不经过任何第三方服务器。
 
-## 功能特性
+## Feature Highlights
 
-- **创作台** — 粘贴视频脚本，AI 自动分析并生成 B 站、抖音、小红书、YouTube 的标题、标签、描述、封面文案
-- **灵感库** — AI 基于历史数据和全网趋势推荐选题方向
-- **数据分析** — 可视化账号数据表现，发现爆款规律
-- **多平台爬虫** — 集成 MediaCrawler，支持 B 站、抖音、小红书、微博数据采集
-- **本地 Embedding** — ONNX 本地语义搜索模型，离线可用，三层降级（本地模型 → 远程 API → BM25）
-- **数据同步** — 支持 Git / WebDAV / 本地文件夹多端同步
-- **创作者管理** — 多账号切换，按创作者维度管理数据和偏好
-- **记忆系统** — 越用越懂你，自动提炼你的内容风格偏好
+<table>
+<tr>
+<td width="50%" valign="top">
+
+### 🖊️ 创作台
+
+粘贴视频脚本 → AI 自动分析 → 一键生成 B 站、抖音、小红书、YouTube 的标题、标签、描述、封面文案。
+
+</td>
+<td width="50%" valign="top">
+
+### 💡 灵感库
+
+AI 基于历史数据 + 全网趋势推荐选题方向，告别选题焦虑。
+
+</td>
+</tr>
+<tr>
+<td valign="top">
+
+### 📊 数据分析
+
+可视化账号数据表现，发现爆款规律，用数据驱动内容策略。
+
+</td>
+<td valign="top">
+
+### 🕷️ 多平台爬虫
+
+集成 MediaCrawler，支持 B 站、抖音、小红书、微博数据采集。
+
+</td>
+</tr>
+<tr>
+<td valign="top">
+
+### 🧠 本地 Embedding
+
+ONNX 本地语义搜索模型，离线可用。三层降级：本地模型 → 远程 API → BM25。
+
+</td>
+<td valign="top">
+
+### 🔄 数据同步
+
+支持 Git / WebDAV / 本地文件夹，多端数据无缝同步。
+
+</td>
+</tr>
+<tr>
+<td valign="top">
+
+### 👤 创作者管理
+
+多账号切换，按创作者维度管理数据和偏好。
+
+</td>
+<td valign="top">
+
+### 🪞 记忆系统
+
+越用越懂你，自动提炼你的内容风格偏好。
+
+</td>
+</tr>
+</table>
 
 ## 技术栈
 
@@ -75,7 +133,7 @@ npm run build
 
 ### 配置 API Key
 
-启动后进入 **设置** 页面，配置你的 API Key 和模型。支持 Claude、OpenAI、DeepSeek、通义千问，以及任何 OpenAI 兼容接口。
+启动后进入 **设置** 页面，配置你的 API Key 和模型。支持 Claude、OpenAI、DeepSeek、通义千问等 LLM。
 
 ## 项目结构
 
@@ -98,18 +156,15 @@ knower_dev/
 │   │   ├── core.js        # 主循环（while + LLM）
 │   │   ├── state.js       # 状态机
 │   │   ├── router.js      # 条件路由
-│   │   └── tools/         # 8 个工具
+│   │   └── tools/         # Agent 工具集
 │   ├── llm/               # LLM 客户端封装
 │   ├── rag/               # 语义搜索 + Embedding
 │   ├── db/                # SQLite 数据库
+│   ├── sync/              # 数据同步（Git / WebDAV / 本地）
 │   └── crawler/           # MediaCrawler 爬虫
 ├── assets/                # Logo
 └── docs/                  # 文档 + 架构图解
 ```
-
-## 架构图解
-
-详细的架构说明和交互演示，查看 [架构图解页面](docs/architecture.html)。
 
 ## 数据安全
 
@@ -133,6 +188,7 @@ fix(settings): 修复 provider 切换后 baseUrl 未更新
 ```
 
 type: `feat` / `fix` / `refactor` / `style` / `docs` / `chore`
+
 
 ## License
 
