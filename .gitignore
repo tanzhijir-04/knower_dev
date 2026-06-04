@@ -13,14 +13,19 @@ assets/icon.ico
 assets/icon.icns
 
 # Environment & secrets
-.env
-.env.local
+.env*
 
-# User data (SQLite database)
-knower-agent/knower.db
+# User data (SQLite databases)
+*.db
 
 # RAG vector data
 knower-agent/.vectra/
+
+# Conversation checkpoints (agent state & chat history)
+knower-agent/.checkpoints/
+
+# Claude Code local config & skill cache
+.claude/
 
 # Logs
 *.log
