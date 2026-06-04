@@ -58,7 +58,7 @@ const PROVIDERS = [
 ]
 
 const PLATFORMS = [
-  { key: 'bili', label: 'B站' },
+  { key: 'bilibili', label: 'B站' },
   { key: 'douyin', label: '抖音' },
   { key: 'xiaohongshu', label: '小红书' },
   { key: 'weibo', label: '微博' },
@@ -663,7 +663,7 @@ export default function SettingsView() {
             {/* 模型来源选择 */}
             <div>
               <label className="block text-xs text-muted mb-2">Embedding 模型来源</label>
-              <div className="flex gap-2">
+              <div className="flex gap-1.5">
                 {[
                   { value: 'local', label: '本地模型（推荐）', icon: HardDrive },
                   { value: 'api', label: '远程 API', icon: Cloud },
@@ -733,7 +733,7 @@ export default function SettingsView() {
                         {!downloaded ? (
                           <button
                             onClick={(e) => { e.stopPropagation(); handleDownloadModel(model.id) }}
-                            className="btn-secondary text-[11px] h-7 px-2.5"
+                            className="btn-secondary text-[11px] h-7 px-2.5 py-0 flex items-center justify-center"
                           >
                             下载
                           </button>
@@ -753,7 +753,7 @@ export default function SettingsView() {
 
                 {/* 下载进度条 */}
                 {downloadingModel && (
-                  <div className="bg-surface/50 rounded-lg p-3 border border-hairline">
+                  <div className="bg-canvas rounded-lg p-3 border border-hairline">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-[11px] text-ink">正在下载 {downloadingModel.name}...</span>
                       <span className="text-[11px] text-muted">{downloadProgress}%</span>
@@ -789,7 +789,7 @@ export default function SettingsView() {
             )}
 
             {/* 说明 */}
-            <div className="bg-surface/50 rounded-lg p-3 border border-hairline">
+            <div className="bg-canvas rounded-lg p-3 border border-hairline/60">
               <p className="text-[11px] text-muted leading-relaxed">
                 <span className="font-medium text-ink">说明：</span>
                 {settings.embeddingProvider === 'local' && '使用本地 ONNX 模型进行语义搜索，无需 API Key，离线可用。'}

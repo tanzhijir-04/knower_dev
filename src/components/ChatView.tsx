@@ -27,13 +27,13 @@ interface Props {
 
 // ---- Quick Action Button ----
 
-function QuickAction({ Icon, label, onClick }: { Icon: ComponentType<{ className?: string }>; label: string; onClick: () => void }) {
+function QuickAction({ Icon, label, onClick, weight }: { Icon: ComponentType<{ className?: string; weight?: string }>; label: string; onClick: () => void; weight?: string }) {
   return (
     <button
       onClick={onClick}
       className="btn-ghost flex items-center gap-1.5 text-[12px] shrink-0"
     >
-      <Icon className="w-3.5 h-3.5" />
+      <Icon className="w-3.5 h-3.5" weight={weight} />
       {label}
     </button>
   )
@@ -858,7 +858,7 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
 
   // ---- Input Area (shared between welcome and chat) ----
   const inputArea = (
-    <div className="px-4 pb-4 shrink-0 max-w-3xl mx-auto w-full relative">
+    <div className="px-6 pb-4 shrink-0 max-w-3xl mx-auto w-full relative">
       {/* Real-time execution indicator */}
       {currentToolName && (
         <div className="mb-2 flex items-center gap-2 px-3 py-2 bg-primary/5 border border-primary/10 rounded-lg">
@@ -884,11 +884,11 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
           </span>
         </div>
       )}
-      <div className="relative">
+      <div className="flex items-end gap-1 min-h-[44px] max-h-[120px] border border-hairline rounded-lg bg-surface transition-colors focus-within:border-hairline-strong">
         {!isStreaming && (
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="absolute left-2 bottom-2 w-8 h-8 rounded-full flex items-center justify-center text-muted hover:text-ink hover:bg-hairline transition-colors z-10"
+            className="shrink-0 w-8 h-8 ml-1 mb-1 rounded-full flex items-center justify-center text-muted hover:text-ink hover:bg-hairline transition-colors"
             title="上传文件 (.txt / .md)"
           >
             <Paperclip className="w-4.5 h-4.5" />
@@ -901,12 +901,12 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
           onKeyDown={handleKeyDown}
           placeholder="输入消息给知更 AI..."
           rows={1}
-          className="textarea w-full pl-10 pr-12 min-h-[44px] max-h-[120px]"
+          className="flex-1 bg-transparent text-ink text-sm py-2.5 pr-2 outline-none resize-none placeholder:text-muted-soft"
         />
         {isStreaming ? (
           <button
             onClick={handleStop}
-            className="absolute right-2 bottom-2 w-8 h-8 rounded-full bg-semantic-error/15 flex items-center justify-center transition-all hover:bg-semantic-error/25"
+            className="shrink-0 w-8 h-8 mr-1 mb-1 rounded-full bg-semantic-error/15 flex items-center justify-center transition-all hover:bg-semantic-error/25"
             title="停止生成"
           >
             <StopCircle className="w-4.5 h-4.5 text-semantic-error" />
@@ -915,7 +915,7 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
           <button
             onClick={() => handleSend()}
             disabled={!input.trim()}
-            className={`absolute right-2 bottom-2 w-8 h-8 rounded-full flex items-center justify-center transition-all disabled:opacity-100 ${
+            className={`shrink-0 w-8 h-8 mr-1 mb-1 rounded-full flex items-center justify-center transition-all disabled:opacity-100 ${
               input.trim()
                 ? 'bg-primary text-on-primary hover:bg-primary-active'
                 : 'bg-surface-strong text-muted cursor-not-allowed'
@@ -927,10 +927,10 @@ export default function ChatView({ pendingTopic, onTopicConsumed, initialConvers
       </div>
       {/* Quick action bar */}
       <div className="flex items-center gap-1.5 mt-2 px-1">
-        <QuickAction Icon={Sparkle} label="生成物料" onClick={() => prefillPrompt('生成物料')} />
-        <QuickAction Icon={ChartBar} label="分析数据" onClick={() => prefillPrompt('分析数据')} />
-        <QuickAction Icon={Lightbulb} label="选题建议" onClick={() => prefillPrompt('选题建议')} />
-        <QuickAction Icon={Download} label="导出结果" onClick={() => prefillPrompt('导出结果')} />
+        <QuickAction Icon={Sparkle} weight="duotone" label="生成物料" onClick={() => prefillPrompt('生成物料')} />
+        <QuickAction Icon={ChartBar} weight="duotone" label="分析数据" onClick={() => prefillPrompt('分析数据')} />
+        <QuickAction Icon={Lightbulb} weight="duotone" label="选题建议" onClick={() => prefillPrompt('选题建议')} />
+        <QuickAction Icon={Download} weight="duotone" label="导出结果" onClick={() => prefillPrompt('导出结果')} />
         <div className="flex-1" />
         <div className="relative">
           <button onClick={() => setShowMoreActions(!showMoreActions)} className="text-muted hover:text-ink p-1.5 rounded-lg hover:bg-hairline transition-colors">

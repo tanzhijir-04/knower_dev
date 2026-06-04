@@ -337,7 +337,7 @@ export default function Sidebar({ currentPage, onNavigate, onOpenConversation, c
           <button
             key={item.id}
             onClick={() => onNavigate(item.id)}
-            className={`nav-item ${currentPage === item.id ? 'active' : ''}`}
+            className={`nav-item ${currentPage === item.id ? 'active' : ''} ${collapsed ? 'px-2.5 py-2.5 justify-center' : ''}`}
           >
             <item.icon className="w-5 h-5 shrink-0" />
             <span ref={el => { navLabelRefs.current[idx] = el }} className="whitespace-nowrap overflow-hidden">
