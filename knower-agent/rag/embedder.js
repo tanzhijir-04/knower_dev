@@ -9,35 +9,56 @@ async function embed(text) {
   if (cached && Date.now() - cached.ts < CACHE_TTL) return cached.vec
 
   const settings = loadSettings
+
+  // 1. 尝试本地模型
+  if (settings.embeddingProvider === 'local' && settings.localEmbeddingModel) {
+    try {
+      const { generateEmbedding } = require('./modelManager')
+      const vec = await generateEmbedding(text, settings.localEmbeddingModel, settings.hfEndpoint)
+      cache.set(hash, { vec, ts: Date.now() })
+      return vec
+    } catch (err) {
+      console.warn('[Embedder] 本地模型失败，尝试远程 API:', err.message)
+    }
+  }
+
+  // 2. 尝试远程 API（现有逻辑）
   const baseUrl = (settings.baseUrl || 'https://api.openai.com').replace(/\/+$/, '')
   const apiKey = settings.apiKey
 
-  if (!apiKey) throw new Error('缺少 API Key，无法调用 embedding 接口')
+  if (apiKey && settings.embeddingModel) {
+    try {
+      const body = {
+        model: settings.embeddingModel || 'text-embedding-3-small',
+        input: text.slice(0, 8000),
+      }
 
-  const body = {
-    model: settings.embeddingModel || 'text-embedding-3-small',
-    input: text.slice(0, 8000),
+      const resp = await fetch(`${baseUrl}/v1/embeddings`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(body),
+      })
+
+      if (!resp.ok) {
+        const err = await resp.text()
+        throw new Error(`Embedding API error ${resp.status}: ${err}`)
+      }
+
+      const data = await resp.json()
+      const vec = data.data[0].embedding
+
+      cache.set(hash, { vec, ts: Date.now() })
+      return vec
+    } catch (err) {
+      console.warn('[Embedder] 远程 API 失败，降级为 BM25:', err.message)
+    }
   }
 
-  const resp = await fetch(`${baseUrl}/v1/embeddings`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(body),
-  })
-
-  if (!resp.ok) {
-    const err = await resp.text()
-    throw new Error(`Embedding API error ${resp.status}: ${err}`)
-  }
-
-  const data = await resp.json()
-  const vec = data.data[0].embedding
-
-  cache.set(hash, { vec, ts: Date.now() })
-  return vec
+  // 3. 无 embedding 可用，抛出错误让 retriever 降级为 BM25
+  throw new Error('无可用的 embedding 模型')
 }
 
 function simpleHash(str) {

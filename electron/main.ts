@@ -190,6 +190,57 @@ ipcMain.handle('set-store', (_event, key: string, value: unknown) => {
 })
 
 // ============================================================
+//  Embedding 模型管理
+// ============================================================
+
+ipcMain.handle('get-downloaded-models', () => {
+  const { getDownloadedModels } = require('../knower-agent/rag/modelManager')
+  return getDownloadedModels()
+})
+
+ipcMain.handle('download-embedding-model', async (event, modelId: string) => {
+  const { LOCAL_MODELS, isModelDownloaded } = require('../knower-agent/rag/modelManager')
+  const model = LOCAL_MODELS.find((m: { id: string }) => m.id === modelId)
+  if (!model) throw new Error('未知模型')
+
+  if (isModelDownloaded(modelId)) return true
+
+  const settings = readSettings()
+  const { pipeline, env } = require('@huggingface/transformers')
+  env.cacheDir = path.join(__dirname, '..', 'knower-agent', '.models', modelId)
+  const hfEndpoint = (settings.hfEndpoint as string) || 'https://hf-mirror.com'
+  env.remoteHost = hfEndpoint
+
+  await pipeline('feature-extraction', model.repo, {
+    progress_callback: (progress: { status: string; progress?: number; file?: string }) => {
+      if (progress.status === 'progress') {
+        event.sender.send('model-download-progress', {
+          modelId,
+          progress: Math.round(progress.progress || 0),
+          status: `下载中... ${progress.file || ''}`,
+        })
+      } else if (progress.status === 'done') {
+        event.sender.send('model-download-progress', {
+          modelId,
+          progress: 100,
+          status: '加载模型...',
+        })
+      }
+    },
+  })
+
+  return true
+})
+
+ipcMain.handle('delete-embedding-model', async (_event, modelId: string) => {
+  const modelDir = path.join(__dirname, '..', 'knower-agent', '.models', modelId)
+  if (fs.existsSync(modelDir)) {
+    fs.rmSync(modelDir, { recursive: true, force: true })
+  }
+  return true
+})
+
+// ============================================================
 //  Agent
 // ============================================================
 
@@ -221,6 +272,8 @@ ipcMain.handle('agent-run', async (event, script: string, platforms: string[], c
       accountName: activeAccount?.name || '',
       accountPlatform: activeAccount?.platform || '',
       accountUid: activeAccount?.uid || '',
+      embeddingProvider: (settings.embeddingProvider as string) || 'local',
+      localEmbeddingModel: (settings.localEmbeddingModel as string) || 'bge-small-zh-v1.5',
     })
     currentAgent = agent
 
@@ -1236,4 +1289,50 @@ ipcMain.handle('trending-sources', async () => {
 ipcMain.handle('trending-set-config', async (_event, config: { sources: string[]; order: string[] }) => {
   saveTrendingConfig({ ...config, lastRefresh: Date.now() })
   return true
+})
+
+// ============================================================
+//  数据同步
+// ============================================================
+
+ipcMain.handle('sync-test', async (_event, config: Record<string, unknown>) => {
+  try {
+    const sync = require('../knower-agent/sync')
+    return await sync.testSync(config)
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err)
+    return { ok: false, message }
+  }
+})
+
+ipcMain.handle('sync-push', async (event, config: Record<string, unknown>, selectedTables: string[]) => {
+  try {
+    const sync = require('../knower-agent/sync')
+    return await sync.pushSync(config, selectedTables, (msg: string) => {
+      event.sender.send('sync-event', JSON.stringify({ type: 'progress', message: msg }))
+    })
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err)
+    return { success: false, error: message }
+  }
+})
+
+ipcMain.handle('sync-pull', async (event, config: Record<string, unknown>, selectedTables: string[]) => {
+  try {
+    const sync = require('../knower-agent/sync')
+    return await sync.pullSync(config, selectedTables, (msg: string) => {
+      event.sender.send('sync-event', JSON.stringify({ type: 'progress', message: msg }))
+    })
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err)
+    return { success: false, error: message }
+  }
+})
+
+ipcMain.handle('sync-logs', async () => {
+  return await db.getSyncLogs(50)
+})
+
+ipcMain.handle('sync-meta-get', async (_event, key: string) => {
+  return await db.getSyncMeta(key)
 })

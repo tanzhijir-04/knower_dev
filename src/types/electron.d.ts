@@ -341,6 +341,10 @@ export interface ElectronAPI {
   updateCategory: (contentId: string, category: string) => Promise<boolean>
   // API 连接测试
   testConnection: (settings: { provider: string; apiKey: string; baseUrl: string; model: string }) => Promise<{ ok: boolean; msg: string }>
+  // Embedding 模型管理
+  getDownloadedModels: () => Promise<string[]>
+  downloadEmbeddingModel: (modelId: string, onProgress?: (progress: number, status: string) => void) => Promise<boolean>
+  deleteEmbeddingModel: (modelId: string) => Promise<boolean>
   // 灵感库
   suggestTopics: (platform: string) => Promise<{ topics: TopicSuggestion[]; error?: string }>
   getTopicTrends: (platform: string) => Promise<TrendData[]>
@@ -361,6 +365,15 @@ export interface ElectronAPI {
   getTrendingSources: () => Promise<{ sources: Record<string, TrendingSource>; config: TrendingConfig }>
   setTrendingConfig: (config: { sources: string[]; order: string[] }) => Promise<boolean>
   openUrl: (url: string) => Promise<void>
+  // 数据库维护
+  vacuumDb: () => Promise<{ success: boolean; error?: string }>
+  // 数据同步
+  syncTest: (config: Record<string, unknown>) => Promise<{ ok: boolean; message: string }>
+  syncPush: (config: Record<string, unknown>, selectedTables: string[]) => Promise<{ success: boolean; filesChanged?: number; bytesTransferred?: number; duration?: number; error?: string }>
+  syncPull: (config: Record<string, unknown>, selectedTables: string[]) => Promise<{ success: boolean; imported?: Record<string, number>; conflicts?: number; errors?: string[]; duration?: number; error?: string }>
+  syncLogs: () => Promise<{ id: number; protocol: string; direction: string; status: string; filesChanged: number; conflicts: number; bytesTransferred: number; errorMessage: string | null; createdAt: string }[]>
+  syncMetaGet: (key: string) => Promise<string | null>
+  onSyncEvent: (callback: (event: string) => void) => () => void
 }
 
 declare global {

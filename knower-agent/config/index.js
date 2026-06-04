@@ -27,7 +27,10 @@ function loadSettings() {
           model: raw.model || 'claude-sonnet-4-20250514',
           baseUrl: raw.baseUrl || '',
           provider: raw.apiProvider || 'claude',
+          embeddingProvider: raw.embeddingProvider || 'local',
+          localEmbeddingModel: raw.localEmbeddingModel || 'bge-small-zh-v1.5',
           embeddingModel: raw.embeddingModel || 'text-embedding-3-small',
+          hfEndpoint: raw.hfEndpoint || 'https://hf-mirror.com',
         }
       }
     }

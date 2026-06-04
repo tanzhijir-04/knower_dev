@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { usePlatform } from '../contexts/PlatformContext'
 import { useAccount } from '../contexts/AccountContext'
-import { Eye, EyeSlash, Check, ArrowClockwise, Trash, Link, Spinner, Download, Plus, PencilSimple } from '@phosphor-icons/react'
+import { Eye, EyeSlash, Check, ArrowClockwise, Trash, Link, Spinner, Download, Plus, PencilSimple, GitBranch, Cloud, Folder, ArrowsClockwise, HardDrive, X } from '@phosphor-icons/react'
 import type { TrendingSource, TrendingConfig } from '../types/electron'
 
 interface Settings {
@@ -16,8 +16,38 @@ interface Settings {
   scriptDuration: string
   defaultLanguage: string
   defaultCrawlCount: number
+  embeddingProvider: string
+  localEmbeddingModel: string
   embeddingModel: string
+  hfEndpoint: string
 }
+
+const LOCAL_MODELS = [
+  {
+    id: 'bge-small-zh-v1.5',
+    name: 'BGE Small 中文',
+    description: '轻量中文模型，24M 参数，推荐大多数用户',
+    size: '~192MB',
+    dimensions: 512,
+    recommended: true,
+  },
+  {
+    id: 'multilingual-e5-small',
+    name: 'E5 Small 多语言',
+    description: '118M 参数，支持 100+ 语言，含中英文',
+    size: '~470MB',
+    dimensions: 384,
+    recommended: false,
+  },
+  {
+    id: 'bge-m3',
+    name: 'BGE M3 多语言',
+    description: '568M 参数，最强多语言模型，体积较大',
+    size: '~2.3GB',
+    dimensions: 1024,
+    recommended: false,
+  },
+]
 
 const PROVIDERS = [
   { id: 'claude', name: 'Claude (Anthropic)', baseUrl: 'https://api.anthropic.com' },
@@ -254,7 +284,10 @@ export default function SettingsView() {
     scriptDuration: '1-3分钟',
     defaultLanguage: '简体中文',
     defaultCrawlCount: 20,
+    embeddingProvider: 'local',
+    localEmbeddingModel: 'bge-small-zh-v1.5',
     embeddingModel: 'text-embedding-3-small',
+    hfEndpoint: 'https://hf-mirror.com',
   })
 
   const [showApiKey, setShowApiKey] = useState(false)
@@ -267,6 +300,51 @@ export default function SettingsView() {
   const { isWindows } = usePlatform()
   const [trendingSources, setTrendingSources] = useState<Record<string, TrendingSource>>({})
   const [trendingConfig, setTrendingConfig] = useState<TrendingConfig>({ sources: ['bilibili', 'douyin', 'weibo'], order: ['bilibili', 'douyin', 'weibo'], lastRefresh: 0 })
+
+  // Embedding model state
+  const [downloadedModels, setDownloadedModels] = useState<string[]>([])
+  const [downloadingModel, setDownloadingModel] = useState<{ id: string; name: string } | null>(null)
+  const [downloadProgress, setDownloadProgress] = useState(0)
+  const [downloadStatus, setDownloadStatus] = useState('')
+
+  useEffect(() => {
+    window.electronAPI?.getDownloadedModels?.().then(setDownloadedModels)
+  }, [])
+
+  // Sync state
+  const [syncProtocol, setSyncProtocol] = useState<'git' | 'webdav' | 'local'>('git')
+  const [syncCfg, setSyncCfg] = useState({
+    repoUrl: '', branch: 'main', sshKeyPath: '',
+    url: '', username: '', password: '',
+    folderPath: '',
+  })
+  const [syncTables, setSyncTables] = useState<string[]>(['accounts', 'conversations', 'messages', 'memories', 'creators'])
+  const [syncTesting, setSyncTesting] = useState(false)
+  const [syncTestResult, setSyncTestResult] = useState<{ ok: boolean; message: string } | null>(null)
+  const [syncPushing, setSyncPushing] = useState(false)
+  const [syncPulling, setSyncPulling] = useState(false)
+  const [syncLogs, setSyncLogs] = useState<{ id: number; protocol: string; direction: string; status: string; filesChanged: number; createdAt: string }[]>([])
+
+  const SYNC_TABLES = [
+    { key: 'accounts', label: '账号' },
+    { key: 'conversations', label: '对话' },
+    { key: 'messages', label: '消息' },
+    { key: 'memories', label: '记忆' },
+    { key: 'scripts', label: '脚本' },
+    { key: 'crawl_tasks', label: '爬取任务' },
+    { key: 'crawl_content', label: '爬取内容' },
+    { key: 'crawl_creators', label: '爬取创作者' },
+    { key: 'creators', label: '创作者' },
+    { key: 'competitors', label: '竞品' },
+    { key: 'saved_topics', label: '保存选题' },
+    { key: 'topic_history', label: '选题历史' },
+    { key: 'video_analyses', label: '视频分析' },
+  ]
+
+  const loadSyncLogs = useCallback(async () => {
+    const logs = await window.electronAPI?.syncLogs()
+    if (logs) setSyncLogs(logs)
+  }, [])
 
   // Load settings from store
   useEffect(() => {
@@ -286,6 +364,9 @@ export default function SettingsView() {
           defaultLanguage: (all.defaultLanguage as string) || s.defaultLanguage,
           defaultCrawlCount: typeof all.defaultCrawlCount === 'number' ? all.defaultCrawlCount : s.defaultCrawlCount,
           embeddingModel: (all.embeddingModel as string) || s.embeddingModel,
+          embeddingProvider: (all.embeddingProvider as string) || s.embeddingProvider,
+          localEmbeddingModel: (all.localEmbeddingModel as string) || s.localEmbeddingModel,
+          hfEndpoint: (all.hfEndpoint as string) || s.hfEndpoint,
         }))
       }
     })
@@ -326,6 +407,38 @@ export default function SettingsView() {
 
   useEffect(() => { loadDataCount() }, [loadDataCount])
 
+  // Load sync logs
+  useEffect(() => { loadSyncLogs() }, [loadSyncLogs])
+
+  // Sync handlers
+  const handleSyncTest = async () => {
+    setSyncTesting(true)
+    setSyncTestResult(null)
+    try {
+      const result = await window.electronAPI?.syncTest({ protocol: syncProtocol, ...syncCfg })
+      setSyncTestResult(result || { ok: false, message: 'IPC 不可用' })
+    } catch (e) {
+      setSyncTestResult({ ok: false, message: `测试失败: ${(e as Error).message}` })
+    }
+    setSyncTesting(false)
+  }
+
+  const handleSyncPush = async () => {
+    setSyncPushing(true)
+    try {
+      await window.electronAPI?.syncPush({ protocol: syncProtocol, ...syncCfg }, syncTables)
+      loadSyncLogs()
+    } finally { setSyncPushing(false) }
+  }
+
+  const handleSyncPull = async () => {
+    setSyncPulling(true)
+    try {
+      await window.electronAPI?.syncPull({ protocol: syncProtocol, ...syncCfg }, syncTables)
+      loadSyncLogs()
+    } finally { setSyncPulling(false) }
+  }
+
   // Connection test — routed through main process to avoid CORS
   const handleTestConnection = async () => {
     setTesting(true)
@@ -360,7 +473,10 @@ export default function SettingsView() {
       ['scriptDuration', settings.scriptDuration],
       ['defaultLanguage', settings.defaultLanguage],
       ['defaultCrawlCount', settings.defaultCrawlCount],
+      ['embeddingProvider', settings.embeddingProvider],
+      ['localEmbeddingModel', settings.localEmbeddingModel],
       ['embeddingModel', settings.embeddingModel],
+      ['hfEndpoint', settings.hfEndpoint],
     ]
     for (const [k, v] of entries) await api.setStore(k, v)
     setSaved(true)
@@ -369,6 +485,38 @@ export default function SettingsView() {
 
   const update = <K extends keyof Settings>(key: K, value: Settings[K]) =>
     setSettings(s => ({ ...s, [key]: value }))
+
+  const handleDownloadModel = async (modelId: string) => {
+    const model = LOCAL_MODELS.find(m => m.id === modelId)
+    if (!model) return
+    setDownloadingModel({ id: modelId, name: model.name })
+    setDownloadProgress(0)
+    setDownloadStatus('准备下载...')
+
+    try {
+      await window.electronAPI?.downloadEmbeddingModel?.(
+        modelId,
+        (progress: number, status: string) => {
+          setDownloadProgress(progress)
+          setDownloadStatus(status)
+        }
+      )
+      setDownloadedModels(prev => [...prev, modelId])
+    } catch (err) {
+      alert(`下载失败: ${(err as Error).message}`)
+    } finally {
+      setDownloadingModel(null)
+    }
+  }
+
+  const handleDeleteModel = async (modelId: string) => {
+    try {
+      await window.electronAPI?.deleteEmbeddingModel?.(modelId)
+      setDownloadedModels(prev => prev.filter(id => id !== modelId))
+    } catch (err) {
+      alert(`删除失败: ${(err as Error).message}`)
+    }
+  }
 
   const togglePlatform = (p: string) => {
     setSettings(s => ({
@@ -511,30 +659,142 @@ export default function SettingsView() {
         <section>
           <h2 className="text-xs uppercase tracking-wider text-muted mb-4">语义检索 (RAG)</h2>
           <div className="card-sm space-y-4">
-            <p className="text-[11px] text-muted">
-              配置 Embedding 模型用于语义搜索历史脚本和爬取数据。支持所有兼容 OpenAI Embedding API 的服务。
-            </p>
 
-            {/* Embedding Model */}
+            {/* 模型来源选择 */}
             <div>
-              <label className="block text-xs text-muted mb-1.5">Embedding 模型</label>
-              <input
-                type="text"
-                value={settings.embeddingModel}
-                onChange={e => update('embeddingModel', e.target.value)}
-                placeholder="text-embedding-3-small"
-                className={inputCls}
-              />
-              <p className="text-[11px] text-muted mt-1">
-                默认 text-embedding-3-small。如使用 Ollama 等本地服务，填对应模型名
-              </p>
+              <label className="block text-xs text-muted mb-2">Embedding 模型来源</label>
+              <div className="flex gap-2">
+                {[
+                  { value: 'local', label: '本地模型（推荐）', icon: HardDrive },
+                  { value: 'api', label: '远程 API', icon: Cloud },
+                  { value: 'none', label: '关闭', icon: X },
+                ].map(opt => (
+                  <button
+                    key={opt.value}
+                    onClick={() => update('embeddingProvider', opt.value)}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs transition-colors ${
+                      settings.embeddingProvider === opt.value
+                        ? 'border-primary bg-primary/5 text-primary'
+                        : 'border-hairline text-muted hover:border-hairline-strong'
+                    }`}
+                  >
+                    <opt.icon className="w-4 h-4" />
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
+            {/* 本地模型配置 */}
+            {settings.embeddingProvider === 'local' && (
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs text-muted mb-1.5">HuggingFace 镜像地址</label>
+                  <input
+                    type="text"
+                    value={settings.hfEndpoint}
+                    onChange={e => update('hfEndpoint', e.target.value)}
+                    placeholder="https://hf-mirror.com"
+                    className={inputCls}
+                  />
+                  <p className="text-[11px] text-muted mt-1">国内用户建议使用 hf-mirror.com 镜像加速下载</p>
+                </div>
+                <div className="grid gap-2">
+                  {LOCAL_MODELS.map(model => {
+                    const downloaded = downloadedModels.includes(model.id)
+                    const isActive = settings.localEmbeddingModel === model.id
+                    return (
+                      <div
+                        key={model.id}
+                        className={`flex items-center gap-3 p-3 rounded-lg border transition-colors cursor-pointer ${
+                          isActive ? 'border-primary bg-primary/5' : 'border-hairline hover:border-hairline-strong'
+                        }`}
+                        onClick={() => update('localEmbeddingModel', model.id)}
+                      >
+                        <input
+                          type="radio"
+                          checked={isActive}
+                          onChange={() => update('localEmbeddingModel', model.id)}
+                          className="accent-primary"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-medium text-ink">{model.name}</span>
+                            {model.recommended && (
+                              <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded">推荐</span>
+                            )}
+                            {downloaded && (
+                              <span className="text-[10px] bg-semantic-success/10 text-semantic-success px-1.5 py-0.5 rounded">已下载</span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-muted mt-0.5">{model.description}</p>
+                          <p className="text-[10px] text-muted-soft mt-0.5">{model.size} · {model.dimensions}维</p>
+                        </div>
+                        {!downloaded ? (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleDownloadModel(model.id) }}
+                            className="btn-secondary text-[11px] h-7 px-2.5"
+                          >
+                            下载
+                          </button>
+                        ) : (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleDeleteModel(model.id) }}
+                            className="text-muted hover:text-semantic-error transition-colors"
+                            title="删除模型"
+                          >
+                            <Trash className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+
+                {/* 下载进度条 */}
+                {downloadingModel && (
+                  <div className="bg-surface/50 rounded-lg p-3 border border-hairline">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[11px] text-ink">正在下载 {downloadingModel.name}...</span>
+                      <span className="text-[11px] text-muted">{downloadProgress}%</span>
+                    </div>
+                    <div className="w-full bg-hairline rounded-full h-1.5">
+                      <div
+                        className="bg-primary h-1.5 rounded-full transition-all duration-300"
+                        style={{ width: `${downloadProgress}%` }}
+                      />
+                    </div>
+                    {downloadStatus && (
+                      <p className="text-[10px] text-muted mt-1">{downloadStatus}</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 远程 API 配置 */}
+            {settings.embeddingProvider === 'api' && (
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs text-muted mb-1.5">Embedding 模型</label>
+                  <input
+                    type="text"
+                    value={settings.embeddingModel}
+                    onChange={e => update('embeddingModel', e.target.value)}
+                    placeholder="text-embedding-3-small"
+                    className={inputCls}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* 说明 */}
             <div className="bg-surface/50 rounded-lg p-3 border border-hairline">
               <p className="text-[11px] text-muted leading-relaxed">
-                <span className="font-medium text-ink">说明：</span>语义检索功能使用上方配置的 API Key 和 Base URL 调用 Embedding 接口。
-                如果未配置 API Key，RAG 功能将自动降级为关键词搜索（BM25）。
-                向量数据存储在本地 <code className="text-[10px] bg-surface px-1 py-0.5 rounded">.vectra/</code> 目录中。
+                <span className="font-medium text-ink">说明：</span>
+                {settings.embeddingProvider === 'local' && '使用本地 ONNX 模型进行语义搜索，无需 API Key，离线可用。'}
+                {settings.embeddingProvider === 'api' && '使用远程 Embedding API，需要 API Key。'}
+                {settings.embeddingProvider === 'none' && '语义搜索已关闭，Agent 将使用关键词搜索（BM25）作为降级方案。'}
               </p>
             </div>
           </div>
@@ -675,7 +935,213 @@ export default function SettingsView() {
         </section>
 
         {/* ============================================================ */}
-        {/*  5. 爬虫设置                                                  */}
+        {/*  5. 数据同步                                                  */}
+        {/* ============================================================ */}
+        <section>
+          <h2 className="text-xs uppercase tracking-wider text-muted mb-4">数据同步</h2>
+          <div className="card-sm space-y-4">
+            {/* Protocol selector */}
+            <div>
+              <label className="block text-xs text-muted mb-2">同步协议</label>
+              <div className="flex flex-wrap gap-2">
+                {([
+                  { key: 'git' as const, label: 'Git', Icon: GitBranch },
+                  { key: 'webdav' as const, label: 'WebDAV', Icon: Cloud },
+                  { key: 'local' as const, label: '本地文件夹', Icon: Folder },
+                ]).map(({ key, label, Icon }) => (
+                  <label
+                    key={key}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs cursor-pointer transition-colors ${
+                      syncProtocol === key
+                        ? 'border-primary/40 bg-primary/10 text-primary'
+                        : 'border-hairline text-muted hover:border-hairline-strong'
+                    }`}
+                  >
+                    <input type="radio" checked={syncProtocol === key} onChange={() => setSyncProtocol(key)} className="sr-only" />
+                    <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 ${
+                      syncProtocol === key ? 'bg-primary border-primary' : 'border-hairline-strong'
+                    }`}>
+                      {syncProtocol === key && <Check className="w-2.5 h-2.5 text-on-primary" />}
+                    </span>
+                    <Icon className="w-3.5 h-3.5" />
+                    {label}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Git config */}
+            {syncProtocol === 'git' && (
+              <>
+                <div>
+                  <label className="block text-xs text-muted mb-1.5">远程仓库</label>
+                  <input
+                    type="text"
+                    value={syncCfg.repoUrl}
+                    onChange={e => setSyncCfg(s => ({ ...s, repoUrl: e.target.value }))}
+                    placeholder="https://github.com/user/knower-sync.git"
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-muted mb-1.5">分支</label>
+                  <input
+                    type="text"
+                    value={syncCfg.branch}
+                    onChange={e => setSyncCfg(s => ({ ...s, branch: e.target.value }))}
+                    placeholder="main"
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-muted mb-1.5">SSH 密钥路径 <span className="text-muted ml-1">(可选)</span></label>
+                  <input
+                    type="text"
+                    value={syncCfg.sshKeyPath}
+                    onChange={e => setSyncCfg(s => ({ ...s, sshKeyPath: e.target.value }))}
+                    placeholder="~/.ssh/id_rsa"
+                    className={inputCls}
+                  />
+                </div>
+              </>
+            )}
+
+            {/* WebDAV config */}
+            {syncProtocol === 'webdav' && (
+              <>
+                <div>
+                  <label className="block text-xs text-muted mb-1.5">服务器地址</label>
+                  <input
+                    type="text"
+                    value={syncCfg.url}
+                    onChange={e => setSyncCfg(s => ({ ...s, url: e.target.value }))}
+                    placeholder="https://dav.example.com"
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-muted mb-1.5">用户名</label>
+                  <input
+                    type="text"
+                    value={syncCfg.username}
+                    onChange={e => setSyncCfg(s => ({ ...s, username: e.target.value }))}
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-muted mb-1.5">密码</label>
+                  <input
+                    type="password"
+                    value={syncCfg.password}
+                    onChange={e => setSyncCfg(s => ({ ...s, password: e.target.value }))}
+                    className={inputCls}
+                  />
+                </div>
+              </>
+            )}
+
+            {/* Local config */}
+            {syncProtocol === 'local' && (
+              <div>
+                <label className="block text-xs text-muted mb-1.5">目标路径</label>
+                <input
+                  type="text"
+                  value={syncCfg.folderPath}
+                  onChange={e => setSyncCfg(s => ({ ...s, folderPath: e.target.value }))}
+                  placeholder="\\NAS\knower-sync 或 /mnt/nas/knower"
+                  className={inputCls}
+                />
+                <p className="text-[11px] text-muted mt-1">支持 SMB/NFS 挂载点或本地文件夹</p>
+              </div>
+            )}
+
+            {/* Test connection */}
+            <div className="flex items-center gap-3 pt-1">
+              <button
+                onClick={handleSyncTest}
+                disabled={syncTesting}
+                className="btn-secondary text-xs flex items-center gap-1.5"
+              >
+                {syncTesting ? <Spinner className="w-3.5 h-3.5 animate-spin" /> : <Link className="w-3.5 h-3.5" />}
+                {syncTesting ? '测试中...' : '测试连接'}
+              </button>
+              {syncTestResult && (
+                <span className={`text-xs ${syncTestResult.ok ? 'text-semantic-success' : 'text-semantic-error'}`}>
+                  {syncTestResult.message}
+                </span>
+              )}
+            </div>
+
+            {/* Table selection */}
+            <div>
+              <label className="block text-xs text-muted mb-2">同步数据表</label>
+              <div className="flex flex-wrap gap-2">
+                {SYNC_TABLES.map(t => (
+                  <label
+                    key={t.key}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs cursor-pointer transition-colors ${
+                      syncTables.includes(t.key)
+                        ? 'border-primary/40 bg-primary/10 text-primary'
+                        : 'border-hairline text-muted hover:border-hairline-strong'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={syncTables.includes(t.key)}
+                      onChange={() => setSyncTables(s => s.includes(t.key) ? s.filter(x => x !== t.key) : [...s, t.key])}
+                      className="sr-only"
+                    />
+                    <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 ${
+                      syncTables.includes(t.key) ? 'bg-primary border-primary' : 'border-hairline-strong'
+                    }`}>
+                      {syncTables.includes(t.key) && <Check className="w-2.5 h-2.5 text-on-primary" />}
+                    </span>
+                    {t.label}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Push / Pull buttons */}
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={handleSyncPush}
+                disabled={syncPushing || syncPulling}
+                className="btn-primary text-xs flex items-center gap-1.5"
+              >
+                {syncPushing ? <Spinner className="w-3.5 h-3.5 animate-spin" /> : <ArrowsClockwise className="w-3.5 h-3.5" />}
+                {syncPushing ? '推送中...' : '推送到远端'}
+              </button>
+              <button
+                onClick={handleSyncPull}
+                disabled={syncPushing || syncPulling}
+                className="btn-secondary text-xs flex items-center gap-1.5"
+              >
+                {syncPulling ? <Spinner className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                {syncPulling ? '拉取中...' : '从远端拉取'}
+              </button>
+            </div>
+
+            {/* Sync logs */}
+            {syncLogs.length > 0 && (
+              <div className="space-y-1.5 pt-2 border-t border-hairline">
+                <label className="block text-xs text-muted mb-1">同步记录</label>
+                {syncLogs.slice(0, 5).map(log => (
+                  <div key={log.id} className="flex items-center gap-2 text-[11px]">
+                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${log.status === 'success' ? 'bg-semantic-success' : log.status === 'partial' ? 'bg-amber-500' : 'bg-semantic-error'}`} />
+                    <span className="text-muted w-28 shrink-0">{log.createdAt}</span>
+                    <span className="text-ink font-medium">{log.protocol.toUpperCase()}</span>
+                    <span className="text-muted">{log.direction === 'push' ? '推送' : '拉取'}</span>
+                    <span className="text-muted">{log.filesChanged} 文件</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* ============================================================ */}
+        {/*  6. 爬虫设置                                                  */}
         {/* ============================================================ */}
         <section>
           <h2 className="text-xs uppercase tracking-wider text-muted mb-4">爬虫设置</h2>
@@ -725,7 +1191,7 @@ export default function SettingsView() {
         </section>
 
         {/* ============================================================ */}
-        {/*  6. 全网热点数据源                                             */}
+        {/*  7. 全网热点数据源                                             */}
         {/* ============================================================ */}
         <section>
           <h2 className="text-xs uppercase tracking-wider text-muted mb-4">全网热点数据源</h2>
@@ -782,7 +1248,7 @@ export default function SettingsView() {
         </section>
 
         {/* ============================================================ */}
-        {/*  7. 创作者管理                                                */}
+        {/*  8. 创作者管理                                                */}
         {/* ============================================================ */}
         <section>
           <h2 className="text-xs uppercase tracking-wider text-muted mb-4">创作者管理</h2>
@@ -792,7 +1258,7 @@ export default function SettingsView() {
         </section>
 
         {/* ============================================================ */}
-        {/*  8. 关于                                                      */}
+        {/*  9. 关于                                                      */}
         {/* ============================================================ */}
         <section>
           <h2 className="text-xs uppercase tracking-wider text-muted mb-4">关于</h2>

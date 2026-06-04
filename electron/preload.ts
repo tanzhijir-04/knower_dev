@@ -88,6 +88,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // API 连接测试
   testConnection: (settings: { provider: string; apiKey: string; baseUrl: string; model: string }) =>
     ipcRenderer.invoke('test-connection', settings),
+  // Embedding 模型管理
+  getDownloadedModels: () => ipcRenderer.invoke('get-downloaded-models'),
+  downloadEmbeddingModel: (modelId: string, onProgress?: (progress: number, status: string) => void) => {
+    if (onProgress) {
+      ipcRenderer.on('model-download-progress', (_event, data) => {
+        if (data.modelId === modelId) {
+          onProgress(data.progress, data.status)
+        }
+      })
+    }
+    return ipcRenderer.invoke('download-embedding-model', modelId)
+  },
+  deleteEmbeddingModel: (modelId: string) => ipcRenderer.invoke('delete-embedding-model', modelId),
   // 灵感库
   suggestTopics: (platform: string) => ipcRenderer.invoke('topics-suggest', platform),
   getTopicTrends: (platform: string) => ipcRenderer.invoke('topics-trends', platform),
@@ -115,4 +128,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getTrendingSources: () => ipcRenderer.invoke('trending-sources'),
   setTrendingConfig: (config: { sources: string[]; order: string[] }) => ipcRenderer.invoke('trending-set-config', config),
   openUrl: (url: string) => ipcRenderer.invoke('open-url', url),
+  // 数据库维护
+  vacuumDb: () => ipcRenderer.invoke('db-vacuum'),
+  // 数据同步
+  syncTest: (config: Record<string, unknown>) => ipcRenderer.invoke('sync-test', config),
+  syncPush: (config: Record<string, unknown>, selectedTables: string[]) =>
+    ipcRenderer.invoke('sync-push', config, selectedTables),
+  syncPull: (config: Record<string, unknown>, selectedTables: string[]) =>
+    ipcRenderer.invoke('sync-pull', config, selectedTables),
+  syncLogs: () => ipcRenderer.invoke('sync-logs'),
+  syncMetaGet: (key: string) => ipcRenderer.invoke('sync-meta-get', key),
+  onSyncEvent: (callback: (event: string) => void) => {
+    const handler = (_event: unknown, data: string) => callback(data)
+    ipcRenderer.on('sync-event', handler)
+    return () => ipcRenderer.removeListener('sync-event', handler)
+  },
 })
