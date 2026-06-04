@@ -1,39 +1,55 @@
-# 知更 Knower
+<p align="center">
+  <img src="assets/logo-color.svg" width="120" alt="知更 Knower" />
+</p>
 
-> 面向个人视频创作者的本地 AI 桌面工作流客户端
+<h1 align="center">知更 Knower</h1>
 
-把脚本丢给知更，一键生成 B站 / 抖音 / 小红书的发布物料——标题、标签、描述、封面文案、拍摄清单，全部本地运行，数据不经第三方。
+<p align="center">
+  面向个人视频创作者的本地 AI 桌面工作流客户端
+</p>
 
-## 核心特性
+<p align="center">
+  <a href="https://knower-ai.page.dev">官网</a> ·
+  <a href="#快速开始">快速开始</a> ·
+  <a href="#功能特性">功能</a> ·
+  <a href="https://github.com/tanzhijir-04/knower_dev/issues">反馈</a>
+</p>
 
-- **AI 脚本分析** — 自动识别视频类型、受众、核心卖点
-- **多平台物料生成** — 一次输入，输出四大平台的发布内容，风格各自适配
-- **拍摄清单** — 按景别拆解分镜，标注预估时长
-- **创作者记忆** — 自动提炼你的风格偏好，越用越懂你
-- **灵感库** — 基于搜索关键词和 AI 选题建议，帮你找到灵感
-- **数据采集** — 集成 MediaCrawler，支持 B站/抖音/小红书/微博 多平台内容抓取
-- **本地优先** — API key 自带，SQLite 本地存储，数据不上云
-- **会话管理** — 对话历史持久化，随时回溯
+---
+
+**知更**帮助视频创作者（B站 / 抖音 / 小红书 / YouTube）从选题到发布，一键生成多平台发布物料。用户自带 API Key，数据全部本地存储，不经过任何第三方服务器。
+
+## 功能特性
+
+- **创作台** — 粘贴视频脚本，AI 自动分析并生成 B 站、抖音、小红书、YouTube 的标题、标签、描述、封面文案
+- **灵感库** — AI 基于历史数据和全网趋势推荐选题方向
+- **数据分析** — 可视化账号数据表现，发现爆款规律
+- **多平台爬虫** — 集成 MediaCrawler，支持 B 站、抖音、小红书、微博数据采集
+- **本地 Embedding** — ONNX 本地语义搜索模型，离线可用，三层降级（本地模型 → 远程 API → BM25）
+- **数据同步** — 支持 Git / WebDAV / 本地文件夹多端同步
+- **创作者管理** — 多账号切换，按创作者维度管理数据和偏好
+- **记忆系统** — 越用越懂你，自动提炼你的内容风格偏好
 
 ## 技术栈
 
 | 层 | 技术 |
 |---|------|
 | 桌面框架 | Electron 33 |
-| 前端 | React 18 + TypeScript 5.6 |
-| 构建 | Vite 6 + vite-plugin-electron |
-| 样式 | Tailwind CSS 3.4（暗色主题） |
-| AI | Anthropic SDK + OpenAI-compatible API（支持 Claude / GPT / 其他） |
-| 存储 | sql.js（WASM SQLite） |
-| 爬虫 | MediaCrawler（Python 子进程） |
+| 前端 | React 18 + TypeScript 5.6 + Vite 6 |
+| 样式 | Tailwind CSS 3.4，暗色 / 亮色主题 |
+| AI 调用 | OpenAI-compatible API（Claude / GPT / DeepSeek / Qwen） |
+| Agent | 自研主循环 + 状态机，零框架依赖 |
+| 数据库 | SQLite（sql.js） |
+| 爬虫 | MediaCrawler（Python，Playwright） |
+| 语义搜索 | ONNX Runtime + HuggingFace 模型 / BM25 降级 |
+| 动画 | GSAP |
 
 ## 快速开始
 
 ### 环境要求
 
-- Node.js >= 18
-- Python >= 3.10（爬虫模块需要）
-- npm >= 9
+- Node.js 18+
+- Python 3.10+（爬虫功能需要）
 
 ### 安装
 
@@ -43,22 +59,11 @@ cd knower_dev
 npm install
 ```
 
-### 初始化爬虫（可选）
-
-如需使用数据采集功能：
-
-```bash
-cd knower-agent/crawler
-setup_env.bat  # 创建 Python venv + 安装依赖 + Playwright
-```
-
-### 开发
+### 启动开发
 
 ```bash
 npm run dev
 ```
-
-启动后在设置页配置你的 API Key、模型和 Base URL，即可开始使用。
 
 ### 构建
 
@@ -68,6 +73,10 @@ npm run build
 
 产物输出到 `release/` 目录。
 
+### 配置 API Key
+
+启动后进入 **设置** 页面，配置你的 API Key 和模型。支持 Claude、OpenAI、DeepSeek、通义千问，以及任何 OpenAI 兼容接口。
+
 ## 项目结构
 
 ```
@@ -75,74 +84,38 @@ knower_dev/
 ├── electron/              # Electron 主进程
 │   ├── main.ts            # 窗口创建、IPC handler
 │   └── preload.ts         # contextBridge 暴露 electronAPI
-├── src/                   # 渲染进程（React）
-│   ├── App.tsx            # 页面路由（chat/topics/data/settings）
+├── src/                   # React 前端
 │   ├── components/
-│   │   ├── ChatView.tsx       # 创作台（核心交互界面）
-│   │   ├── TopicsView.tsx     # 灵感库（选题发现 + AI 选题建议）
-│   │   ├── MaterialCards.tsx  # 结构化物料展示
-│   │   ├── Sidebar.tsx        # 侧边栏导航
-│   │   └── SettingsView.tsx   # API 配置页
-│   └── types/
-│       └── electron.d.ts  # IPC 类型定义
+│   │   ├── ChatView.tsx   # 创作台（核心页面）
+│   │   ├── TopicsView.tsx # 灵感库
+│   │   ├── SettingsView.tsx
+│   │   ├── Sidebar.tsx
+│   │   └── MaterialCards.tsx
+│   ├── App.tsx            # 页面路由
+│   └── index.css          # 全局样式 + CSS 变量
 ├── knower-agent/          # Agent Core（Node.js）
 │   ├── agent/
-│   │   ├── core.js            # Agent 主循环（tool use + streaming）
-│   │   └── tools/
-│   │       ├── save_result.js # 保存结果 + 记忆提炼
-│   │       └── analyze_topic.js # AI 选题分析
-│   ├── crawler/           # 多平台爬虫（MediaCrawler）
-│   │   ├── setup_env.bat  # 环境初始化
-│   │   └── ...
-│   ├── db/
-│   │   └── index.js       # SQLite 数据层
-│   └── config/
-│       └── index.js       # API 配置读取
-├── assets/                # SVG logo 源文件
-├── tailwind.config.js     # 主题色与字体定义
-└── vite.config.ts         # Vite + Electron 构建配置
+│   │   ├── core.js        # 主循环（while + LLM）
+│   │   ├── state.js       # 状态机
+│   │   ├── router.js      # 条件路由
+│   │   └── tools/         # 8 个工具
+│   ├── llm/               # LLM 客户端封装
+│   ├── rag/               # 语义搜索 + Embedding
+│   ├── db/                # SQLite 数据库
+│   └── crawler/           # MediaCrawler 爬虫
+├── assets/                # Logo
+└── docs/                  # 文档 + 架构图解
 ```
 
-## Agent 工作流
+## 架构图解
 
-```
-用户输入脚本
-    ↓
-Claude 分析脚本 → 输出 analysis JSON
-    ↓
-Claude 生成物料 → 输出 result JSON（B站/抖音/小红书/拍摄清单）
-    ↓
-调用 save_result → 存入 SQLite
-    ↓
-异步提炼创作者记忆 → 风格偏好/内容规律/平台习惯
-    ↓
-输出自然语言总结给用户
-```
+详细的架构说明和交互演示，查看 [架构图解页面](docs/architecture.html)。
 
-下次对话时，已有的创作者记忆会自动注入 System Prompt，Agent 会据此调整生成策略。
+## 数据安全
 
-## 爬虫模块
-
-MediaCrawler 多平台爬虫已集成，支持 B站、抖音、小红书、微博 四个平台。
-
-| 平台 | platform 值 | 说明 |
-|------|------------|------|
-| B站 | `bili` | 支持指定用户/视频 ID |
-| 抖音 | `dy` | 需要 Node.js（JS 签名） |
-| 小红书 | `xhs` | - |
-| 微博 | `wb` | - |
-
-> 首次运行需扫码登录，登录状态保存在 `mediasrc/login_state/`，建议 `ENABLE_CDP_MODE = False`。
-
-## 配置说明
-
-在应用设置页或 `%APPDATA%/knower/settings.json` 中配置：
-
-| 字段 | 说明 | 示例 |
-|------|------|------|
-| `apiKey` | API 密钥 | `sk-xxx` |
-| `model` | 模型名称 | `claude-sonnet-4-20250514` |
-| `baseUrl` | API 代理地址（可选） | `https://your-proxy.com/v1` |
+- 所有数据存储在本地 SQLite 数据库
+- API Key 仅存储在本地，不上传任何服务器
+- 支持数据同步到你自己的 Git 仓库 / WebDAV / NAS
 
 ## 分支约定
 
@@ -157,11 +130,15 @@ type(scope): 描述
 
 feat(chat): 接入 streaming API
 fix(settings): 修复 provider 切换后 baseUrl 未更新
-feat(topics): 接入灵感库选题功能
 ```
 
 type: `feat` / `fix` / `refactor` / `style` / `docs` / `chore`
 
 ## License
 
-MIT
+[MIT](LICENSE)
+
+## 联系
+
+- GitHub: [tanzhijir-04](https://github.com/tanzhijir-04)
+- 官网: [knower-ai.page.dev](https://knower-ai.page.dev)

@@ -433,6 +433,7 @@ function initTables() {
         "INSERT OR REPLACE INTO memories (account_id, type, key, value, evidence, weight, created_at, updated_at) VALUES ('_system', 'meta', 'synced_clean_v2', '1', 'message dedup cleanup', 1.0, datetime('now','localtime'), datetime('now','localtime'))"
       )
       saveDb()
+      db.run('VACUUM')
     }
   } catch { /* ignore */ }
 
@@ -457,6 +458,30 @@ function initTables() {
       saveDb()
     }
   } catch { /* ignore */ }
+
+  // ============================================================
+  //  同步模块表
+  // ============================================================
+  db.run(`
+    CREATE TABLE IF NOT EXISTS sync_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      protocol TEXT NOT NULL,
+      direction TEXT NOT NULL,
+      status TEXT NOT NULL,
+      files_changed INTEGER DEFAULT 0,
+      conflicts INTEGER DEFAULT 0,
+      bytes_transferred INTEGER DEFAULT 0,
+      error_message TEXT,
+      created_at DATETIME DEFAULT (datetime('now','localtime'))
+    )
+  `)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS sync_meta (
+      key TEXT PRIMARY KEY,
+      value TEXT,
+      updated_at DATETIME DEFAULT (datetime('now','localtime'))
+    )
+  `)
 }
 
 async function saveScript(content, analysis, result, accountId = 'default') {
@@ -1527,6 +1552,53 @@ async function vacuumDb() {
   flushDb()
 }
 
+// --- 同步模块 ---
+
+async function addSyncLog(protocol, direction, status, filesChanged = 0, conflicts = 0, bytesTransferred = 0, errorMessage = null) {
+  const db = await getDb()
+  db.run(
+    'INSERT INTO sync_logs (protocol, direction, status, files_changed, conflicts, bytes_transferred, error_message) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    [protocol, direction, status, filesChanged, conflicts, bytesTransferred, errorMessage]
+  )
+  saveDb()
+}
+
+async function getSyncLogs(limit = 20) {
+  const db = await getDb()
+  const res = db.exec(
+    'SELECT id, protocol, direction, status, files_changed, conflicts, bytes_transferred, error_message, created_at FROM sync_logs ORDER BY id DESC LIMIT ?',
+    [limit]
+  )
+  if (!res.length) return []
+  return res[0].values.map((row) => ({
+    id: row[0],
+    protocol: row[1],
+    direction: row[2],
+    status: row[3],
+    filesChanged: row[4],
+    conflicts: row[5],
+    bytesTransferred: row[6],
+    errorMessage: row[7],
+    createdAt: row[8],
+  }))
+}
+
+async function getSyncMeta(key) {
+  const db = await getDb()
+  const res = db.exec('SELECT value FROM sync_meta WHERE key = ?', [key])
+  if (!res.length || !res[0].values.length) return null
+  return res[0].values[0][0]
+}
+
+async function setSyncMeta(key, value) {
+  const db = await getDb()
+  db.run(
+    'INSERT OR REPLACE INTO sync_meta (key, value, updated_at) VALUES (?, ?, datetime(\'now\',\'localtime\'))',
+    [key, value]
+  )
+  saveDb()
+}
+
 module.exports = {
   getDb, saveDb: flushDb, reloadDb, saveScript, getScript, listScripts,
   createConversation, updateConversationTitle, deleteConversation, togglePinConversation,
@@ -1544,4 +1616,5 @@ module.exports = {
   createAccount, listAccounts, getActiveAccount, switchAccount, updateAccount, deleteAccount,
   addCompetitor, removeCompetitor, getCompetitors, getCompetitorRecentContent,
   vacuumDb,
+  addSyncLog, getSyncLogs, getSyncMeta, setSyncMeta,
 }

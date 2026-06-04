@@ -60,3 +60,16 @@ knower-agent/crawler/mediasrc/login_state/
 
 # Research (not for repo)
 virality-research/
+
+# Temp / debug scripts
+_check_db.js
+scripts/db_check.cjs
+scripts/db_deep_check.cjs
+test_account_isolation.js
+
+# Zip & PDF artifacts
+*.zip
+*.pdf
+
+# IP / legal (not for repo)
+软件著作权申请资料/
