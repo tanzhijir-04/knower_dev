@@ -44,12 +44,14 @@ export default function CalendarView({ onNavigate: _onNavigate }: Props) {
 
   useEffect(() => { loadSchedule() }, [loadSchedule])
 
-  // 加载推荐发布时间
+  // 加载推荐发布时间（弹窗打开时 + 平台切换时刷新）
   useEffect(() => {
-    if (form.platform) {
-      window.electronAPI?.scheduleRecommendedTimes(form.platform).then(setRecommendedTimes)
+    if (showModal && form.platform) {
+      window.electronAPI?.scheduleRecommendedTimes(form.platform)
+        .then(setRecommendedTimes)
+        .catch(() => setRecommendedTimes([]))
     }
-  }, [form.platform])
+  }, [showModal, form.platform])
 
   // 日历网格数据
   const calendarDays = useMemo(() => {
@@ -296,14 +298,14 @@ export default function CalendarView({ onNavigate: _onNavigate }: Props) {
                 </div>
               </div>
               {/* AI 推荐时间 */}
-              {recommendedTimes.length > 0 && (
+              {recommendedTimes.filter(t => t.hour).length > 0 && (
                 <div className="p-2.5 rounded-lg bg-primary/5 border border-primary/15">
                   <p className="text-[10px] text-primary font-medium mb-1.5">
                     <Clock className="w-3 h-3 inline mr-1" />
                     AI 推荐发布时间
                   </p>
                   <div className="flex gap-1.5">
-                    {recommendedTimes.map(t => (
+                    {recommendedTimes.filter(t => t.hour).map(t => (
                       <button key={t.hour} onClick={() => setForm(f => ({ ...f, plannedTime: `${t.hour}:00` }))}
                         className="px-2 py-0.5 rounded bg-primary/10 text-[10px] text-primary hover:bg-primary/20 transition-colors">
                         {t.hour}:00

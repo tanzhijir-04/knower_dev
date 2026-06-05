@@ -1731,13 +1731,19 @@ async function getRecommendedTimes(accountId = 'default', platform) {
   const db = await getDb()
   // crawl_content 没有 account_id 和 publish_time 列
   // 通过 crawl_tasks 关联 account_id，用 created_at 近似发布时间
+  // created_at 可能是 ISO datetime 或 Unix timestamp，用 CASE 兼容两种格式
   const res = db.exec(
-    `SELECT substr(cc.created_at, 12, 2) as hour,
-            AVG(cc.like_count + cc.comment_count + cc.share_count) as avg_engagement
+    `SELECT CASE
+       WHEN length(cc.created_at) = 10 AND cc.created_at NOT LIKE '%-%'
+         THEN substr('0' || cast((cast(cc.created_at as integer) % 86400) / 3600 as text), -2)
+       ELSE substr(cc.created_at, 12, 2)
+     END as hour,
+     AVG(cc.like_count + cc.comment_count + cc.share_count) as avg_engagement
      FROM crawl_content cc
      JOIN crawl_tasks ct ON cc.task_id = ct.id
-     WHERE ct.account_id = ? AND cc.platform = ? AND cc.created_at IS NOT NULL
+     WHERE ct.account_id = ? AND cc.platform = ? AND cc.created_at IS NOT NULL AND cc.created_at != ''
      GROUP BY hour
+     HAVING hour != ''
      ORDER BY avg_engagement DESC
      LIMIT 3`,
     [accountId, platform]

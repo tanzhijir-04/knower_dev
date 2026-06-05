@@ -849,7 +849,7 @@ export default function DataView() {
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* 顶部 Tab 栏 */}
       <div className={`titlebar-drag h-12 px-6 shrink-0 flex items-center gap-3 ${isWindows ? '' : 'border-b border-hairline'}`}>
-        <div className="flex gap-1">
+        <div className="flex gap-1 no-drag">
           {DATA_TABS.map(tab => (
             <button key={tab.key} onClick={() => setDataTab(tab.key)}
               className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] rounded-full transition-colors ${
@@ -869,7 +869,7 @@ export default function DataView() {
       {/* 顶部操作栏 */}
       <div className={`titlebar-drag h-12 px-6 shrink-0 flex items-center gap-3 ${isWindows ? '' : 'border-b border-hairline'}`}>
         <h1 className="text-sm font-medium text-ink mr-2">数据分析</h1>
-        <div className="flex gap-1">
+        <div className="flex gap-1 no-drag">
           <button onClick={() => setMode('search')}
             className={`px-3 py-1 text-[11px] rounded-full transition-colors ${mode === 'search' ? 'bg-primary/20 text-primary' : 'bg-canvas-soft text-muted hover:text-ink'}`}>
             <MagnifyingGlass className="w-3 h-3 mr-1" />关键词搜索
