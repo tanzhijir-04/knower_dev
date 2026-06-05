@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import gsap from 'gsap'
-import { Chats, ChartBar, SquaresFour, GearSix, TrendUp, PencilSimple, PushPin, Download, Trash, MagnifyingGlass, Sun, Moon, Desktop, CaretLeft, DotsThree } from '@phosphor-icons/react'
+import { Chats, ChartBar, SquaresFour, GearSix, TrendUp, CalendarBlank, PencilSimple, PushPin, Download, Trash, MagnifyingGlass, Sun, Moon, Desktop, CaretLeft, DotsThree } from '@phosphor-icons/react'
 import type { ComponentType } from 'react'
 import type { Page } from '../App'
 import type { Message } from '../types/electron'
@@ -18,6 +18,7 @@ const navItems: { id: Page; icon: ComponentType<{ className?: string }>; label: 
   { id: 'chat', icon: Chats, label: '创作台' },
   { id: 'data', icon: ChartBar, label: '数据分析' },
   { id: 'trending', icon: TrendUp, label: '全网热点' },
+  { id: 'calendar', icon: CalendarBlank, label: '日历' },
   { id: 'topics', icon: SquaresFour, label: '灵感库' },
   { id: 'settings', icon: GearSix, label: '设置' },
 ]
@@ -170,6 +171,7 @@ export default function Sidebar({ currentPage, onNavigate, onOpenConversation, c
   const [editingTitle, setEditingTitle] = useState('')
   const [activeConversationId, setActiveConversationId] = useState<number | null>(null)
   const [theme, setTheme] = useState<'dark' | 'light' | 'system'>('light')
+  const [unreadAlerts, setUnreadAlerts] = useState(0)
   const width = collapsed ? 56 : 240
   const logoTextRef = useRef<HTMLSpanElement>(null)
   const navLabelRefs = useRef<(HTMLSpanElement | null)[]>([])
@@ -201,6 +203,19 @@ export default function Sidebar({ currentPage, onNavigate, onOpenConversation, c
       })
     }
   }, [collapsed])
+
+  // 轮询竞品未读通知
+  useEffect(() => {
+    const poll = async () => {
+      try {
+        const alerts = await window.electronAPI?.competitorAlerts(true)
+        if (alerts) setUnreadAlerts(alerts.length)
+      } catch { /* ignore */ }
+    }
+    poll()
+    const timer = setInterval(poll, 5 * 60 * 1000)
+    return () => clearInterval(timer)
+  }, [])
 
   const handleThemeChange = (newTheme: 'dark' | 'light' | 'system') => {
     setTheme(newTheme)
@@ -337,12 +352,15 @@ export default function Sidebar({ currentPage, onNavigate, onOpenConversation, c
           <button
             key={item.id}
             onClick={() => onNavigate(item.id)}
-            className={`nav-item ${currentPage === item.id ? 'active' : ''} ${collapsed ? 'px-2.5 py-2.5 justify-center' : ''}`}
+            className={`nav-item relative ${currentPage === item.id ? 'active' : ''} ${collapsed ? 'px-2.5 py-2.5 justify-center' : ''}`}
           >
             <item.icon className="w-5 h-5 shrink-0" />
             <span ref={el => { navLabelRefs.current[idx] = el }} className="whitespace-nowrap overflow-hidden">
               {item.label}
             </span>
+            {item.id === 'topics' && unreadAlerts > 0 && currentPage !== 'topics' && (
+              <span className="absolute top-0.5 right-1 w-2 h-2 bg-red-500 rounded-full" />
+            )}
           </button>
         ))}
       </nav>

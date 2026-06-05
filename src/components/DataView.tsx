@@ -8,6 +8,7 @@ import TimeChart from './data/TimeChart'
 import RadarChart from './data/RadarChart'
 import ScatterChart from './data/ScatterChart'
 import VideoDetailPanel from './data/VideoDetailPanel'
+import ReviewView from './ReviewView'
 import ExportMenu from './data/ExportMenu'
 import { ChartBar, Tag, Clock, TrendUp, PlayCircle, ThumbsUp, ChatsCircle, ShareNetwork, Users, BookmarkSimple, Coin, Subtitles, TextAa, ChartLineUp, ChartPie, ChartPolar, ChartScatter, Brain, Trophy, Lightbulb, Note, MagnifyingGlass, Database, Plus, DotsThree, Person, Sparkle, CheckCircle, WarningCircle, HourglassSimple, StackSimple, ArrowDown, ArrowUp, FunnelSimple, MagicWand, ArrowRight, Download, Trash } from '@phosphor-icons/react'
 import type { ComponentType } from 'react'
@@ -501,7 +502,15 @@ function SidebarItem({ source, isSelected, onClick, onContextMenu }: {
 //  主组件
 // ============================================================
 
+type DataViewTab = 'data' | 'reviews'
+
+const DATA_TABS: { key: DataViewTab; label: string; icon: ComponentType<{ className?: string }> }[] = [
+  { key: 'data', label: '数据分析', icon: ChartBar },
+  { key: 'reviews', label: '内容复盘', icon: TrendUp },
+]
+
 export default function DataView() {
+  const [dataTab, setDataTab] = useState<DataViewTab>('data')
   const [selectedSource, setSelectedSource] = useState('all')
   const [sources, setSources] = useState<SourceInfo[]>([])
   const [videos, setVideos] = useState<CrawlContent[]>([])
@@ -838,6 +847,25 @@ export default function DataView() {
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
+      {/* 顶部 Tab 栏 */}
+      <div className={`titlebar-drag h-12 px-6 shrink-0 flex items-center gap-3 ${isWindows ? '' : 'border-b border-hairline'}`}>
+        <div className="flex gap-1">
+          {DATA_TABS.map(tab => (
+            <button key={tab.key} onClick={() => setDataTab(tab.key)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] rounded-full transition-colors ${
+                dataTab === tab.key ? 'bg-primary/20 text-primary' : 'bg-canvas-soft text-muted hover:text-ink'
+              }`}>
+              <tab.icon className="w-3.5 h-3.5" />
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {dataTab === 'reviews' ? (
+        <ReviewView />
+      ) : (
+      <>
       {/* 顶部操作栏 */}
       <div className={`titlebar-drag h-12 px-6 shrink-0 flex items-center gap-3 ${isWindows ? '' : 'border-b border-hairline'}`}>
         <h1 className="text-sm font-medium text-ink mr-2">数据分析</h1>
@@ -1163,6 +1191,8 @@ export default function DataView() {
       {/* 视频详情面板 */}
       {selectedVideo && (
         <VideoDetailPanel video={selectedVideo} onClose={() => setSelectedVideo(null)} onUpdateCategory={handleUpdateCategory} />
+      )}
+      </>
       )}
     </div>
   )
