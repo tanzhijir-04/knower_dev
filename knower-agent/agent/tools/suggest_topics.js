@@ -308,7 +308,7 @@ ${seriesHint}
           role: 'user',
           content: userContent,
         }],
-        maxTokens: 4096,
+        maxTokens: 16384,
       })
 
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)

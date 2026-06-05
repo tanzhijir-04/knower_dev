@@ -689,7 +689,22 @@ async function getMessages(conversationId) {
 
 // --- 记忆管理 ---
 
-async function upsertMemory(accountId, type, key, value, evidence) {
+async function upsertMemory(accountIdOrObj, typeOrUndefined, keyOrUndefined, valueOrUndefined, evidenceOrUndefined) {
+  // 支持两种调用方式：upsertMemory(id, type, key, value, evidence) 或 upsertMemory({ accountId, type, key, value, evidence })
+  let accountId, type, key, value, evidence
+  if (typeof accountIdOrObj === 'object' && accountIdOrObj !== null) {
+    accountId = accountIdOrObj.accountId || 'default'
+    type = accountIdOrObj.type
+    key = accountIdOrObj.key
+    value = accountIdOrObj.value
+    evidence = accountIdOrObj.evidence
+  } else {
+    accountId = accountIdOrObj || 'default'
+    type = typeOrUndefined
+    key = keyOrUndefined
+    value = valueOrUndefined
+    evidence = evidenceOrUndefined
+  }
   const db = await getDb()
   const now = new Date().toISOString()
   const existing = db.exec(
@@ -1284,18 +1299,29 @@ async function getTopicHistory(platform, accountId = 'default', limit = 50) {
   }))
 }
 
-async function toggleTopicHistoryStar(id) {
+async function toggleTopicHistoryStar(id, accountId) {
   const db = await getDb()
-  db.run(
-    'UPDATE topic_history SET is_starred = CASE WHEN is_starred = 1 THEN 0 ELSE 1 END WHERE id = ?',
-    [id]
-  )
+  if (accountId) {
+    db.run(
+      'UPDATE topic_history SET is_starred = CASE WHEN is_starred = 1 THEN 0 ELSE 1 END WHERE id = ? AND account_id = ?',
+      [id, accountId]
+    )
+  } else {
+    db.run(
+      'UPDATE topic_history SET is_starred = CASE WHEN is_starred = 1 THEN 0 ELSE 1 END WHERE id = ?',
+      [id]
+    )
+  }
   saveDb()
 }
 
-async function deleteTopicHistory(id) {
+async function deleteTopicHistory(id, accountId) {
   const db = await getDb()
-  db.run('DELETE FROM topic_history WHERE id = ?', [id])
+  if (accountId) {
+    db.run('DELETE FROM topic_history WHERE id = ? AND account_id = ?', [id, accountId])
+  } else {
+    db.run('DELETE FROM topic_history WHERE id = ?', [id])
+  }
   saveDb()
 }
 
@@ -1560,6 +1586,7 @@ async function deleteAccount(accountId) {
   db.run("DELETE FROM crawl_content WHERE task_id IN (SELECT id FROM crawl_tasks WHERE account_id = ?)", [accountId])
   db.run('DELETE FROM crawl_tasks WHERE account_id = ?', [accountId])
   db.run('DELETE FROM saved_topics WHERE account_id = ?', [accountId])
+  db.run('DELETE FROM topic_history WHERE account_id = ?', [accountId])
   db.run('DELETE FROM video_analyses WHERE account_id = ?', [accountId])
   db.run('DELETE FROM memories WHERE account_id = ?', [accountId])
   db.run('DELETE FROM accounts WHERE id = ?', [accountId])

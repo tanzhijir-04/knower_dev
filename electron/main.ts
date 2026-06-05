@@ -378,14 +378,23 @@ let topicAgentLock = false
 let topicAbortController: AbortController | null = null
 
 function buildTopicPrompt(platform: string, mode: string) {
-  const platformMap: Record<string, string> = { bili: 'B站', dy: '抖音', xhs: '小红书' }
+  const platformMap: Record<string, string> = { bili: 'B站', dy: '抖音', xhs: '小红书', wb: '微博' }
   const modeMap: Record<string, string> = {
-    trend: '热点趋势',
+    trend: '热点趋势追热',
     differentiated: '差异化切入',
-    competitor: '竞品对标',
-    series: '系列化规划',
+    competitor: '竞品对标分析',
+    series: '系列化内容规划',
   }
-  return `请调用 suggest_topics 工具为 ${platformMap[platform] || platform} 平台生成选题。参数：platform="${platform}", mode="${mode}", count=5。`
+  const modeDesc = modeMap[mode] || mode
+  return `你必须调用 suggest_topics 工具。不要回复文本，不要解释，直接调用工具。
+
+工具参数：
+- platform: "${platform}"
+- mode: "${mode}"
+- count: 5
+
+选题策略：${modeDesc}
+平台：${platformMap[platform] || platform}`
 }
 
 ipcMain.handle('topic-agent-run', async (event, platform: string, mode: string) => {
@@ -393,6 +402,8 @@ ipcMain.handle('topic-agent-run', async (event, platform: string, mode: string) 
     return { error: 'Agent 正在处理中，请稍候' }
   }
   topicAgentLock = true
+
+  let gotTopics = false
 
   try {
     const Agent = require('../knower-agent/agent/core')
@@ -424,10 +435,34 @@ ipcMain.handle('topic-agent-run', async (event, platform: string, mode: string) 
       signal: abortController.signal,
     })) {
       event.sender.send('topic-agent-event', JSON.stringify(evt))
+      if (evt.type === 'tool_result' && evt.name === 'suggest_topics') {
+        gotTopics = true
+      }
     }
+
+    // 兜底：如果 Agent 没有调用 suggest_topics，直接调用
+    if (!gotTopics && !abortController.signal.aborted) {
+      console.log('[TopicAgent] Agent 未调用 suggest_topics，直接调用工具')
+      const { tools } = require('../knower-agent/agent/tools')
+      const suggestTool = tools.find((t: { name: string }) => t.name === 'suggest_topics')
+      if (suggestTool) {
+        const result = await suggestTool.execute({
+          platform,
+          mode,
+          count: 5,
+          accountId: activeAccount?.id || 'default',
+          onProgress: (msg: string) => {
+            event.sender.send('topic-agent-event', JSON.stringify({ type: 'tool_progress', name: 'suggest_topics', message: msg }))
+          },
+        })
+        event.sender.send('topic-agent-event', JSON.stringify({ type: 'tool_result', name: 'suggest_topics', result }))
+        if (result.topics?.length) gotTopics = true
+      }
+    }
+
     event.sender.send('topic-agent-event', JSON.stringify({ type: 'done' }))
   } catch (err: unknown) {
-    if (topicAbortController?.signal.aborted) {
+    if (abortController!.signal.aborted) {
       event.sender.send('topic-agent-event', JSON.stringify({ type: 'done' }))
     } else {
       const message = err instanceof Error ? err.message : String(err)
@@ -1229,12 +1264,14 @@ ipcMain.handle('topics-history-list', async (_event, platform?: string, limit?: 
 })
 
 ipcMain.handle('topics-history-star', async (_event, id: number) => {
-  await db.toggleTopicHistoryStar(id)
+  const active = await db.getActiveAccount()
+  await db.toggleTopicHistoryStar(id, active?.id || 'default')
   return true
 })
 
 ipcMain.handle('topics-history-delete', async (_event, id: number) => {
-  await db.deleteTopicHistory(id)
+  const active = await db.getActiveAccount()
+  await db.deleteTopicHistory(id, active?.id || 'default')
   return true
 })
 

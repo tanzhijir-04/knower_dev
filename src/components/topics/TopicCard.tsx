@@ -1,4 +1,5 @@
 import type { TopicSuggestion } from '../../types/electron'
+import { CalendarBlank } from '@phosphor-icons/react'
 import { gsap } from '../../lib/gsap'
 
 interface Props {
@@ -80,6 +81,22 @@ export default function TopicCard({ topic, onClick, isActive }: Props) {
           )}
         </div>
       )}
+      <div className="flex items-center gap-1 mt-2 pt-2 border-t border-hairline/20">
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            window.electronAPI?.scheduleCreate({
+              platform: topic.platforms?.[0] || 'bili',
+              title: topic.title,
+              notes: topic.reason || '',
+            })
+          }}
+          className="flex items-center gap-1 text-[10px] text-muted hover:text-ink transition-colors px-2 py-1 rounded hover:bg-canvas-soft"
+        >
+          <CalendarBlank className="w-3 h-3" />
+          排期
+        </button>
+      </div>
     </button>
   )
 }

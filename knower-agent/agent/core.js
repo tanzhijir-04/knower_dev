@@ -255,11 +255,12 @@ async function buildSystemPrompt(opts = {}) {
 
     // 选题模式：当用户请求生成选题时，直接调用 suggest_topics（它内部已自动查询数据）
     if (opts._suggestingMode) {
-      prompt += `\n\n## 选题模式
-你正在为创作者生成选题建议。请直接调用 suggest_topics 工具完成任务。
-suggest_topics 内部会自动查询历史数据、趋势数据、用户偏好和实时热点，你不需要手动调用其他数据查询工具。
-
-调用 suggest_topics 时传入平台（platform）参数即可，工具会自动处理其他逻辑。`
+      prompt += `\n\n## 选题模式（强制规则）
+你的唯一任务：调用 suggest_topics 工具。
+- 不要回复纯文本，不要解释你在做什么，不要说"让我为你生成选题"之类的话。
+- 直接输出 tool_use 调用 suggest_topics。
+- 用户消息中包含 platform 和 mode 参数，你必须原样传入工具。
+- suggest_topics 内部已自动查询数据，你不需要调用其他工具。`
     }
 
     setCache(cacheKey, prompt)

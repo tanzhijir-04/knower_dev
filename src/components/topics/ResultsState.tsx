@@ -84,7 +84,7 @@ export default function ResultsState({ topics, onSelect, onBack }: Props) {
               </div>
 
               {/* Tags */}
-              {topic.tags.length > 0 && (
+              {topic.tags?.length > 0 && (
                 <div className="flex gap-2">
                   {topic.tags.slice(0, 4).map((tag, j) => (
                     <span key={j} className="text-caption bg-surface-strong text-muted px-2 py-0.5 rounded-md">

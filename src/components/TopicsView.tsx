@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import gsap from 'gsap'
-import { ClockCounterClockwise } from '@phosphor-icons/react'
+import { ClockCounterClockwise, CaretLeft } from '@phosphor-icons/react'
 import InitialState from './topics/InitialState'
 import ThinkingState from './topics/ThinkingState'
 import ResultsState from './topics/ResultsState'
@@ -10,6 +10,7 @@ import HistoryPanel from './topics/HistoryPanel'
 import type { TopicSuggestion, TopicHistory } from '../types/electron'
 import { usePlatform } from '../contexts/PlatformContext'
 import { useToast } from '../contexts/ToastContext'
+import { useAccount } from '../contexts/AccountContext'
 
 type ViewState = 'initial' | 'thinking' | 'results' | 'deep'
 
@@ -33,6 +34,7 @@ interface AgentEvent {
 }
 
 export default function TopicsView({ onSendToChat }: Props) {
+  const { activeAccountId } = useAccount()
   const [viewState, setViewState] = useState<ViewState>('initial')
   const [platform, setPlatform] = useState<string>('bili')
   const [selectedTopicIdx, setSelectedTopicIdx] = useState<number>(0)
@@ -60,7 +62,7 @@ export default function TopicsView({ onSendToChat }: Props) {
       const data = await api.getTopicHistory(platform)
       setHistory(data)
     } catch { /* ignore */ }
-  }, [api, platform])
+  }, [api, platform, activeAccountId])
 
   useEffect(() => { loadHistory() }, [loadHistory])
 
@@ -99,49 +101,79 @@ export default function TopicsView({ onSendToChat }: Props) {
         const evt: AgentEvent = JSON.parse(raw)
         setAgentEvents(prev => [...prev, evt])
 
-        // Extract topics from suggest_topics tool result
+        // 1. 从 tool_result 提取选题
         if (evt.type === 'tool_result' && evt.name === 'suggest_topics') {
           const result = typeof evt.result === 'string' ? JSON.parse(evt.result) : evt.result
-          if (result.topics?.length) {
+          if (result?.topics?.length) {
             setTopics(result.topics)
             setThinkingComplete(true)
+            api.saveTopicHistory(platform, 'agent', result.topics).catch(() => {})
             loadHistory()
-            // Animate to results
-            const el = containerRef.current
-            if (el) {
-              gsap.fromTo(el,
-                { opacity: 0, y: 12 },
-                { opacity: 1, y: 0, duration: 0.3, ease: 'power2.out', clearProps: 'transform' }
-              )
-            }
-            setTimeout(() => setViewState('results'), 500)
+            setTimeout(() => setViewState('results'), 300)
+            return
           }
+          if (!result?.error) {
+            setThinkingComplete(true)
+          }
+        }
+
+        // 2. 从 text 事件兜底提取 JSON 选题
+        if (evt.type === 'text' && evt.text) {
+          try {
+            const match = evt.text.match(/\[[\s\S]*\]/)
+            if (match) {
+              const parsed = JSON.parse(match[0])
+              if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].title) {
+                setTopics(parsed)
+                setThinkingComplete(true)
+                api.saveTopicHistory(platform, 'agent', parsed).catch(() => {})
+                loadHistory()
+                setTimeout(() => setViewState('results'), 300)
+                return
+              }
+            }
+          } catch {}
         }
 
         if (evt.type === 'error') {
           setError(evt.message || 'Agent 执行失败')
           showToast(`生成失败: ${evt.message}`, 'error')
           setViewState('initial')
+          return
         }
 
-        if (evt.type === 'done' && !thinkingCompleteRef.current) {
-          setError('Agent 未返回选题')
-          setViewState('initial')
+        if (evt.type === 'done') {
+          if (topics.length > 0 || thinkingCompleteRef.current) {
+            setViewState('results')
+          } else {
+            setError('Agent 未返回选题，请重试')
+            setViewState('initial')
+          }
         }
       } catch { /* ignore parse errors */ }
     })
     return unsub
-  }, [api, loadHistory, showToast])
+  }, [api, loadHistory, showToast, platform, topics.length])
 
   // Handlers
-  const handleInitialSubmit = useCallback((_input: string, mode: string) => {
+  const handleInitialSubmit = useCallback(async (_input: string, mode: string) => {
     setError(null)
     setAgentEvents([])
     setThinkingComplete(false)
     transitionTo('thinking')
     // Start Agent via independent channel
-    api?.runTopicAgent(platform, mode)
-  }, [api, platform, transitionTo])
+    try {
+      const result = await api?.runTopicAgent(platform, mode)
+      if (result?.error) {
+        setError(result.error)
+        showToast(result.error, 'error')
+        setViewState('initial')
+      }
+    } catch {
+      setError('启动 Agent 失败')
+      setViewState('initial')
+    }
+  }, [api, platform, transitionTo, showToast])
 
   const handleThinkingSkip = useCallback(() => {
     // If API already returned, just go to results
@@ -150,7 +182,7 @@ export default function TopicsView({ onSendToChat }: Props) {
       transitionTo('results')
     } else {
       // Stop the Agent
-      api?.stopTopicAgent()
+      api?.stopTopicAgent().catch(() => {})
       setViewState('initial')
     }
   }, [topics.length, transitionTo, api])
@@ -245,6 +277,12 @@ export default function TopicsView({ onSendToChat }: Props) {
 
       {/* Content */}
       <div ref={containerRef} className="flex-1 flex flex-col overflow-hidden">
+        {viewState !== 'initial' && (
+          <button onClick={goBack} className="self-start m-3 flex items-center gap-1 text-xs text-muted hover:text-ink transition-colors px-2 py-1 rounded hover:bg-canvas-soft">
+            <CaretLeft className="w-3.5 h-3.5" />
+            返回
+          </button>
+        )}
         {viewState === 'initial' && (
           <InitialState onSubmit={handleInitialSubmit} />
         )}

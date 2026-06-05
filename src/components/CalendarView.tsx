@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { CalendarBlank, Plus, CaretLeft, CaretRight, X, Clock } from '@phosphor-icons/react'
 import type { ScheduleItem } from '../types/electron'
 import type { Page } from '../App'
+import { useAccount } from '../contexts/AccountContext'
 
 const PLATFORM_COLORS: Record<string, string> = {
   bili: 'bg-[#00a1d6]', dy: 'bg-[#010101]', xhs: 'bg-[#fe2c55]',
@@ -22,6 +23,7 @@ const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六']
 interface Props { onNavigate?: (page: Page) => void }
 
 export default function CalendarView({ onNavigate: _onNavigate }: Props) {
+  const { activeAccount } = useAccount()
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [items, setItems] = useState<ScheduleItem[]>([])
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
@@ -40,9 +42,9 @@ export default function CalendarView({ onNavigate: _onNavigate }: Props) {
       const data = await window.electronAPI?.scheduleList(start, end)
       if (data) setItems(data)
     } catch { /* ignore */ }
-  }, [year, month])
+  }, [year, month, activeAccount?.id])
 
-  useEffect(() => { loadSchedule() }, [loadSchedule])
+  useEffect(() => { loadSchedule() }, [loadSchedule, activeAccount?.id])
 
   // 加载推荐发布时间（弹窗打开时 + 平台切换时刷新）
   useEffect(() => {
@@ -231,9 +233,20 @@ export default function CalendarView({ onNavigate: _onNavigate }: Props) {
                 <div className="flex items-center gap-2 mb-1">
                   <span className={`w-2 h-2 rounded-full ${PLATFORM_COLORS[item.platform] || 'bg-muted'}`} />
                   <span className="text-[11px] text-muted">{PLATFORM_LABELS[item.platform] || item.platform}</span>
-                  <span className={`ml-auto text-[10px] px-1.5 py-0.5 rounded-full ${STATUS_STYLES[item.status] || ''}`}>
-                    {STATUS_LABELS[item.status] || item.status}
-                  </span>
+                  <div className="ml-auto relative">
+                    <button
+                      onClick={async () => {
+                        const nextStatus: Record<string, string> = { planned: 'scheduled', scheduled: 'published', published: 'planned', skipped: 'planned' }
+                        const next = nextStatus[item.status] || 'planned'
+                        await window.electronAPI?.scheduleUpdate(item.id, { status: next })
+                        setItems(prev => prev.map(i => i.id === item.id ? { ...i, status: next as ScheduleItem['status'] } : i))
+                      }}
+                      className={`text-[10px] px-1.5 py-0.5 rounded-full hover:opacity-80 transition-opacity cursor-pointer ${STATUS_STYLES[item.status] || ''}`}
+                      title="点击切换状态"
+                    >
+                      {STATUS_LABELS[item.status] || item.status}
+                    </button>
+                  </div>
                 </div>
                 <p className="text-xs text-ink font-medium mb-1">{item.title}</p>
                 {item.plannedTime && (
@@ -320,6 +333,27 @@ export default function CalendarView({ onNavigate: _onNavigate }: Props) {
                 <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
                   className="textarea w-full" rows={2} placeholder="可选" />
               </div>
+              {/* 状态（仅编辑时显示） */}
+              {editingItem && (
+                <div>
+                  <label className="text-[11px] text-muted mb-1.5 block">状态</label>
+                  <select
+                    value={editingItem.status}
+                    onChange={e => {
+                      window.electronAPI?.scheduleUpdate(editingItem.id, { status: e.target.value })
+                      setItems(prev => prev.map(i => i.id === editingItem.id ? { ...i, status: e.target.value as ScheduleItem['status'] } : i))
+                      setEditingItem(null)
+                      setShowModal(false)
+                    }}
+                    className="input w-full"
+                  >
+                    <option value="planned">待安排</option>
+                    <option value="scheduled">已安排</option>
+                    <option value="published">已发布</option>
+                    <option value="skipped">已跳过</option>
+                  </select>
+                </div>
+              )}
             </div>
             <div className="flex justify-end gap-2 px-5 py-3 border-t border-hairline/30">
               <button onClick={() => setShowModal(false)} className="btn-ghost text-xs">取消</button>
