@@ -71,6 +71,107 @@ function getToolTimeout(toolName) {
 }
 
 // ============================================================
+//  工具返回值摘要化 — 避免全量 JSON 塞入 messages
+// ============================================================
+
+function summarizeToolResult(toolName, result) {
+  if (!result || typeof result !== 'object') return result
+
+  // crawl_data_batch: result.results 是数组，每个元素有 { platform, success, data: { stats, contents[], creators[] } }
+  if (toolName === 'crawl_data_batch' && result.results) {
+    return {
+      success: true,
+      totalResults: result.totalCount || 0,
+      platforms: result.results.map(r => ({
+        platform: r.platform,
+        count: r.data?.contents?.length || 0,
+        topTitle: r.data?.contents?.[0]?.title || '',
+      })),
+    }
+  }
+
+  // crawl_data: 已经是截断的 topContents，但仍可压缩 creators
+  if (toolName === 'crawl_data') {
+    return {
+      success: result.success,
+      platform: result.platform,
+      totalCount: result.totalCount || 0,
+      topContents: result.topContents || [],  // 已截断到 10 条
+      creators: result.creators?.map(c => c.nickname).join(', ') || '',
+      message: result.message,
+    }
+  }
+
+  // query_data: videos 可能很多，截断
+  if (toolName === 'query_data') {
+    if (result.videos) {
+      return {
+        success: true,
+        totalCount: result.totalCount,
+        sample: result.videos.slice(0, 10).map(v => v.title),
+      }
+    }
+    return result  // sources 查询本身就不大
+  }
+
+  // suggest_topics: topics 数组可能很大
+  if (toolName === 'suggest_topics' && result.topics) {
+    return {
+      success: true,
+      topicCount: result.topics.length,
+      topics: result.topics.map(t => ({
+        title: t.title,
+        overallScore: t.overallScore,
+        urgency: t.urgency,
+      })),
+    }
+  }
+
+  // 其他工具返回值本身就小，原样返回
+  return result
+}
+
+// ============================================================
+//  消息历史压缩 — 控制 messages 数组长度
+// ============================================================
+
+function compressMessages(messages, maxMessages = 20) {
+  if (messages.length <= maxMessages) return messages
+
+  const first = messages[0]  // 保留第一条用户消息
+  const recent = messages.slice(-(maxMessages - 2))
+
+  // 从被压缩的旧消息中提取工具调用摘要
+  const middle = messages.slice(1, -(maxMessages - 2))
+  const toolCalls = []
+  for (const m of middle) {
+    // tool_result 消息的 content 是数组
+    if (m.role === 'user' && Array.isArray(m.content)) {
+      for (const c of m.content) {
+        if (c.type === 'tool_result') {
+          try {
+            const r = JSON.parse(c.content)
+            toolCalls.push(r.message || r.queryType || r.topicCount ? `done` : 'done')
+          } catch {
+            toolCalls.push('done')
+          }
+        }
+      }
+    }
+  }
+
+  const summary = toolCalls.length > 0
+    ? `[之前 ${toolCalls.length} 次工具调用已完成]`
+    : '[之前的对话已省略]'
+
+  return [
+    first,
+    { role: 'user', content: summary },
+    ...recent,
+  ]
+}
+
+// ============================================================
 //  系统提示词
 // ============================================================
 
@@ -348,6 +449,7 @@ class Agent {
     while (iterations < MAX_ITERATIONS) {
       iterations++
       state.metadata.iterationCount = iterations
+      messages = compressMessages(messages)
 
       const contextFromState = buildContextFromState(state)
       const fullPrompt = contextFromState
@@ -415,7 +517,7 @@ class Agent {
             toolResults.push({
               type: 'tool_result',
               tool_use_id: block.id,
-              content: JSON.stringify(result),
+              content: JSON.stringify(summarizeToolResult(block.name, result)),
             })
           }
 
@@ -485,6 +587,7 @@ class Agent {
     while (iterations < MAX_ITERATIONS) {
       iterations++
       state.metadata.iterationCount = iterations
+      messages = compressMessages(messages)
 
       if (signal?.aborted) return
 
@@ -579,7 +682,7 @@ class Agent {
             toolResults.push({
               type: 'tool_result',
               tool_use_id: block.id,
-              content: JSON.stringify(result),
+              content: JSON.stringify(summarizeToolResult(block.name, result)),
             })
           }
         }

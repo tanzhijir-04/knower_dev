@@ -31,12 +31,12 @@ function determineNextAction(state, llmResponse) {
 
 function isToolCompatibleWithPhase(toolName, phase) {
   const compatibility = {
-    idle: ['crawl_data', 'crawl_data_batch', 'query_data', 'suggest_topics', 'request_user_input', 'analyze_script', 'search_similar'],
-    crawling: ['crawl_data', 'crawl_data_batch', 'query_data', 'search_similar'],
+    idle: ['crawl_data', 'crawl_data_batch', 'query_data', 'query_local_db', 'suggest_topics', 'request_user_input', 'analyze_script', 'search_similar'],
+    crawling: ['crawl_data', 'crawl_data_batch', 'query_data', 'query_local_db', 'search_similar'],
     analyzing: ['analyze_script', 'request_user_input', 'search_similar'],
     generating: ['expand_script', 'search_similar'],
     saving: ['save_result'],
-    querying: ['query_data', 'search_similar'],
+    querying: ['query_data', 'query_local_db', 'search_similar'],
     suggesting: ['suggest_topics'],
     done: [],
   }

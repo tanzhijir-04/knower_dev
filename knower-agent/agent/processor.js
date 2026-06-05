@@ -88,22 +88,21 @@ function processToolResult(toolName, rawResult, state, accountId = 'default') {
 function buildContextFromState(state) {
   const parts = []
 
+  // crawlData 只有 crawl_data_batch 会填充
   if (state.crawlData?.length > 0) {
-    parts.push(`## 已爬取的数据\n共 ${state.crawlData.length} 条数据`)
-    const samples = state.crawlData.slice(0, 10)
-    for (const item of samples) {
-      parts.push(`- "${item.title}" | 播放: ${item.playCount || 0} | 点赞: ${item.likeCount || 0}`)
-    }
+    parts.push(`## 已爬取的数据\n共 ${state.crawlData.length} 条，已存入数据库。用 query_local_db 按条件查询具体数据。`)
+    // 不再逐条列出标题，节省 token
   }
 
   if (state.analysis) {
-    parts.push(`## 脚本分析结果\n- 类型: ${state.analysis.videoType}\n- 主题: ${state.analysis.topic}\n- 受众: ${state.analysis.audience}\n- 时长: ${state.analysis.duration}\n- 卖点: ${state.analysis.keyPoints?.join(', ')}`)
+    // 分析结果通常不大，保留但截断
+    const analysisStr = JSON.stringify(state.analysis)
+    parts.push(`## 脚本分析结果\n${analysisStr.slice(0, 500)}`)
   }
 
   if (state.errors.length > 0) {
     parts.push(`## 遇到的问题\n${state.errors.map(e => `- ${e}`).join('\n')}`)
   }
-
   if (state.warnings.length > 0) {
     parts.push(`## 注意事项\n${state.warnings.map(w => `- ${w}`).join('\n')}`)
   }
