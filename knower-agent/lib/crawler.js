@@ -129,4 +129,30 @@ function runCrawler(platform, keywords, options = {}, onProgress) {
   })
 }
 
-module.exports = { runCrawler }
+async function crawlVideoComments(platform, videoId, maxCount = 50) {
+  const { execFile } = require('child_process')
+  const scriptPath = require('path').join(__dirname, '..', 'crawler', 'run_crawler.py')
+  const pythonPath = getPythonPath()
+  return new Promise((resolve, reject) => {
+    execFile(pythonPath, [
+      scriptPath,
+      '--platform', platform,
+      '--crawler-type', 'detail',
+      '--specified-id', videoId,
+      '--get-comment',
+      '--max-comments', String(maxCount),
+    ], {
+      cwd: require('path').join(__dirname, '..', 'crawler'),
+      timeout: 60000,
+      env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
+    }, (err, stdout) => {
+      if (err) return reject(err)
+      try {
+        const result = JSON.parse(stdout)
+        resolve(result.comments || [])
+      } catch { resolve([]) }
+    })
+  })
+}
+
+module.exports = { runCrawler, crawlVideoComments }

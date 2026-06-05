@@ -143,4 +143,48 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('sync-event', handler)
     return () => ipcRenderer.removeListener('sync-event', handler)
   },
+  // 内容日历
+  scheduleCreate: (data: { topicId?: number; platform: string; title: string; plannedDate?: string; plannedTime?: string; notes?: string }) =>
+    ipcRenderer.invoke('schedule-create', data),
+  scheduleList: (startDate?: string, endDate?: string) =>
+    ipcRenderer.invoke('schedule-list', startDate, endDate),
+  scheduleUpdate: (id: number, updates: Record<string, unknown>) =>
+    ipcRenderer.invoke('schedule-update', id, updates),
+  scheduleDelete: (id: number) =>
+    ipcRenderer.invoke('schedule-delete', id),
+  scheduleRecommendedTimes: (platform: string) =>
+    ipcRenderer.invoke('schedule-recommended-times', platform),
+  // 评论舆情
+  commentsCrawl: (platform: string, videoId: string) =>
+    ipcRenderer.invoke('comments-crawl', platform, videoId),
+  commentsList: (videoId: string) =>
+    ipcRenderer.invoke('comments-list', videoId),
+  commentsAnalyze: (videoId: string) =>
+    ipcRenderer.invoke('comments-analyze', videoId),
+  commentsSummary: (platform?: string) =>
+    ipcRenderer.invoke('comments-summary', platform),
+  commentsWriteMemories: (videoId: string) =>
+    ipcRenderer.invoke('comments-write-memories', videoId),
+  // 内容复盘
+  reviewCreate: (data: Record<string, unknown>) =>
+    ipcRenderer.invoke('review-create', data),
+  reviewList: (platform?: string) =>
+    ipcRenderer.invoke('review-list', platform),
+  reviewUpdate: (id: number, updates: Record<string, unknown>) =>
+    ipcRenderer.invoke('review-update', id, updates),
+  reviewDelete: (id: number) =>
+    ipcRenderer.invoke('review-delete', id),
+  reviewStats: (platform?: string) =>
+    ipcRenderer.invoke('review-stats', platform),
+  reviewAiAnalyze: (reviewId: number) =>
+    ipcRenderer.invoke('review-ai-analyze', reviewId),
+  // 竞品订阅
+  competitorCheckNow: () =>
+    ipcRenderer.invoke('competitor-check-now'),
+  competitorAlerts: (unreadOnly?: boolean) =>
+    ipcRenderer.invoke('competitor-alerts', unreadOnly),
+  competitorAlertRead: (id: number) =>
+    ipcRenderer.invoke('competitor-alert-read', id),
+  competitorAlertReadAll: () =>
+    ipcRenderer.invoke('competitor-alert-read-all'),
 })

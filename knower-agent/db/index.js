@@ -482,6 +482,88 @@ function initTables() {
       updated_at DATETIME DEFAULT (datetime('now','localtime'))
     )
   `)
+
+  // === 内容日历 ===
+  db.run(`
+    CREATE TABLE IF NOT EXISTS publish_schedule (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      account_id TEXT NOT NULL DEFAULT 'default',
+      topic_id INTEGER,
+      platform TEXT NOT NULL,
+      title TEXT NOT NULL,
+      status TEXT DEFAULT 'planned',
+      planned_date TEXT,
+      planned_time TEXT,
+      actual_date TEXT,
+      notes TEXT DEFAULT '',
+      created_at DATETIME DEFAULT (datetime('now','localtime')),
+      updated_at DATETIME DEFAULT (datetime('now','localtime'))
+    )
+  `)
+  db.run('CREATE INDEX IF NOT EXISTS idx_schedule_date ON publish_schedule(account_id, planned_date)')
+
+  // === 评论舆情 ===
+  db.run(`
+    CREATE TABLE IF NOT EXISTS comments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      account_id TEXT NOT NULL DEFAULT 'default',
+      video_id TEXT NOT NULL,
+      platform TEXT NOT NULL,
+      author_name TEXT DEFAULT '',
+      author_uid TEXT DEFAULT '',
+      content TEXT NOT NULL,
+      like_count INTEGER DEFAULT 0,
+      reply_count INTEGER DEFAULT 0,
+      sentiment TEXT DEFAULT '',
+      tags TEXT DEFAULT '[]',
+      created_at DATETIME DEFAULT (datetime('now','localtime'))
+    )
+  `)
+  db.run('CREATE INDEX IF NOT EXISTS idx_comments_video ON comments(account_id, video_id)')
+  db.run('CREATE INDEX IF NOT EXISTS idx_comments_platform ON comments(account_id, platform)')
+
+  // === 内容复盘 ===
+  db.run(`
+    CREATE TABLE IF NOT EXISTS content_reviews (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      account_id TEXT NOT NULL DEFAULT 'default',
+      schedule_id INTEGER,
+      script_id INTEGER,
+      platform TEXT NOT NULL,
+      title TEXT NOT NULL,
+      publish_date TEXT,
+      views INTEGER DEFAULT 0,
+      likes INTEGER DEFAULT 0,
+      comments INTEGER DEFAULT 0,
+      shares INTEGER DEFAULT 0,
+      saves INTEGER DEFAULT 0,
+      new_followers INTEGER DEFAULT 0,
+      predicted_views INTEGER DEFAULT 0,
+      predicted_likes INTEGER DEFAULT 0,
+      ai_analysis TEXT DEFAULT '',
+      user_notes TEXT DEFAULT '',
+      rating INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT (datetime('now','localtime')),
+      updated_at DATETIME DEFAULT (datetime('now','localtime'))
+    )
+  `)
+  db.run('CREATE INDEX IF NOT EXISTS idx_reviews_account ON content_reviews(account_id, platform)')
+  db.run('CREATE INDEX IF NOT EXISTS idx_reviews_date ON content_reviews(account_id, publish_date)')
+
+  // === 竞品订阅 ===
+  db.run(`
+    CREATE TABLE IF NOT EXISTS competitor_alerts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      account_id TEXT NOT NULL DEFAULT 'default',
+      competitor_id INTEGER NOT NULL,
+      alert_type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      detail TEXT DEFAULT '',
+      is_read INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT (datetime('now','localtime'))
+    )
+  `)
+  db.run('CREATE INDEX IF NOT EXISTS idx_alerts_account ON competitor_alerts(account_id, is_read)')
 }
 
 async function saveScript(content, analysis, result, accountId = 'default') {
@@ -1599,6 +1681,231 @@ async function setSyncMeta(key, value) {
   saveDb()
 }
 
+// ==================== 内容日历 CRUD ====================
+
+async function createScheduleItem({ accountId, topicId, platform, title, plannedDate, plannedTime, notes }) {
+  const db = await getDb()
+  db.run(
+    'INSERT INTO publish_schedule (account_id, topic_id, platform, title, planned_date, planned_time, notes) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    [accountId || 'default', topicId || null, platform, title, plannedDate || null, plannedTime || null, notes || '']
+  )
+  saveDb()
+}
+
+async function getScheduleItems(accountId = 'default', startDate, endDate) {
+  const db = await getDb()
+  let query = 'SELECT id, account_id, topic_id, platform, title, status, planned_date, planned_time, actual_date, notes, created_at FROM publish_schedule WHERE account_id = ?'
+  const params = [accountId]
+  if (startDate) { query += ' AND planned_date >= ?'; params.push(startDate) }
+  if (endDate) { query += ' AND planned_date <= ?'; params.push(endDate) }
+  query += ' ORDER BY planned_date, planned_time'
+  const res = db.exec(query, params)
+  if (!res.length) return []
+  return res[0].values.map(row => ({
+    id: row[0], accountId: row[1], topicId: row[2], platform: row[3], title: row[4],
+    status: row[5], plannedDate: row[6], plannedTime: row[7], actualDate: row[8],
+    notes: row[9], createdAt: row[10],
+  }))
+}
+
+async function updateScheduleItem(id, updates) {
+  const db = await getDb()
+  const fields = [], params = []
+  for (const [key, val] of Object.entries(updates)) {
+    fields.push(key.replace(/([A-Z])/g, '_$1').toLowerCase() + ' = ?')
+    params.push(val)
+  }
+  fields.push("updated_at = datetime('now','localtime')")
+  params.push(id)
+  db.run('UPDATE publish_schedule SET ' + fields.join(', ') + ' WHERE id = ?', params)
+  saveDb()
+}
+
+async function deleteScheduleItem(id) {
+  const db = await getDb()
+  db.run('DELETE FROM publish_schedule WHERE id = ?', [id])
+  saveDb()
+}
+
+async function getRecommendedTimes(accountId = 'default', platform) {
+  const db = await getDb()
+  // crawl_content 没有 account_id 和 publish_time 列
+  // 通过 crawl_tasks 关联 account_id，用 created_at 近似发布时间
+  const res = db.exec(
+    `SELECT substr(cc.created_at, 12, 2) as hour,
+            AVG(cc.like_count + cc.comment_count + cc.share_count) as avg_engagement
+     FROM crawl_content cc
+     JOIN crawl_tasks ct ON cc.task_id = ct.id
+     WHERE ct.account_id = ? AND cc.platform = ? AND cc.created_at IS NOT NULL
+     GROUP BY hour
+     ORDER BY avg_engagement DESC
+     LIMIT 3`,
+    [accountId, platform]
+  )
+  if (!res.length) return []
+  return res[0].values.map(row => ({ hour: row[0], avgEngagement: row[1] }))
+}
+
+// ==================== 评论舆情 CRUD ====================
+
+async function saveComments(comments, accountId = 'default') {
+  const db = await getDb()
+  for (const c of comments) {
+    db.run(
+      'INSERT INTO comments (account_id, video_id, platform, author_name, author_uid, content, like_count, reply_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [accountId, c.videoId, c.platform, c.authorName || '', c.authorUid || '', c.content, c.likeCount || 0, c.replyCount || 0]
+    )
+  }
+  saveDb()
+}
+
+async function getCommentsByVideo(videoId, accountId = 'default') {
+  const db = await getDb()
+  const res = db.exec('SELECT id, video_id, platform, author_name, content, like_count, reply_count, sentiment, tags, created_at FROM comments WHERE video_id = ? AND account_id = ? ORDER BY like_count DESC', [videoId, accountId])
+  if (!res.length) return []
+  return res[0].values.map(row => ({
+    id: row[0], videoId: row[1], platform: row[2], authorName: row[3], content: row[4],
+    likeCount: row[5], replyCount: row[6], sentiment: row[7], tags: JSON.parse(row[8] || '[]'), createdAt: row[9],
+  }))
+}
+
+async function updateCommentSentiment(id, sentiment, tags) {
+  const db = await getDb()
+  db.run('UPDATE comments SET sentiment = ?, tags = ? WHERE id = ?', [sentiment, JSON.stringify(tags), id])
+  saveDb()
+}
+
+async function getCommentSummary(accountId = 'default', platform) {
+  const db = await getDb()
+  let where = 'WHERE account_id = ?', params = [accountId]
+  if (platform) { where += ' AND platform = ?'; params.push(platform) }
+  const total = db.exec('SELECT COUNT(*) FROM comments ' + where, params)
+  const sentiment = db.exec('SELECT sentiment, COUNT(*) FROM comments ' + where + ' GROUP BY sentiment', params)
+  const topTags = db.exec('SELECT tags FROM comments ' + where + " AND tags != '[]'", params)
+  const tagFreq = {}
+  if (topTags.length) {
+    for (const row of topTags[0].values) {
+      for (const t of JSON.parse(row[0])) { tagFreq[t] = (tagFreq[t] || 0) + 1 }
+    }
+  }
+  return {
+    total: total.length ? total[0].values[0][0] : 0,
+    sentimentBreakdown: sentiment.length ? sentiment[0].values : [],
+    topTags: Object.entries(tagFreq).sort((a, b) => b[1] - a[1]).slice(0, 20).map(([tag, count]) => ({ tag, count })),
+  }
+}
+
+async function deleteCommentsByVideo(videoId, accountId = 'default') {
+  const db = await getDb()
+  db.run('DELETE FROM comments WHERE video_id = ? AND account_id = ?', [videoId, accountId])
+  saveDb()
+}
+
+// ==================== 内容复盘 CRUD ====================
+
+async function createReview(data, accountId = 'default') {
+  const db = await getDb()
+  db.run(
+    'INSERT INTO content_reviews (account_id, schedule_id, script_id, platform, title, publish_date, views, likes, comments, shares, saves, new_followers, predicted_views, predicted_likes, user_notes, rating) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [accountId, data.scheduleId || null, data.scriptId || null, data.platform, data.title, data.publishDate || '', data.views || 0, data.likes || 0, data.comments || 0, data.shares || 0, data.saves || 0, data.newFollowers || 0, data.predictedViews || 0, data.predictedLikes || 0, data.userNotes || '', data.rating || 0]
+  )
+  saveDb()
+}
+
+async function getReviews(accountId = 'default', platform) {
+  const db = await getDb()
+  let query = 'SELECT id, account_id, schedule_id, script_id, platform, title, publish_date, views, likes, comments, shares, saves, new_followers, predicted_views, predicted_likes, ai_analysis, user_notes, rating, created_at FROM content_reviews WHERE account_id = ?'
+  const params = [accountId]
+  if (platform) { query += ' AND platform = ?'; params.push(platform) }
+  query += ' ORDER BY publish_date DESC, created_at DESC'
+  const res = db.exec(query, params)
+  if (!res.length) return []
+  return res[0].values.map(row => ({
+    id: row[0], accountId: row[1], scheduleId: row[2], scriptId: row[3], platform: row[4],
+    title: row[5], publishDate: row[6], views: row[7], likes: row[8], comments: row[9],
+    shares: row[10], saves: row[11], newFollowers: row[12], predictedViews: row[13],
+    predictedLikes: row[14], aiAnalysis: row[15], userNotes: row[16], rating: row[17], createdAt: row[18],
+  }))
+}
+
+async function updateReview(id, updates) {
+  const db = await getDb()
+  const fields = [], params = []
+  for (const [key, val] of Object.entries(updates)) {
+    fields.push(key.replace(/([A-Z])/g, '_$1').toLowerCase() + ' = ?')
+    params.push(val)
+  }
+  fields.push("updated_at = datetime('now','localtime')")
+  params.push(id)
+  db.run('UPDATE content_reviews SET ' + fields.join(', ') + ' WHERE id = ?', params)
+  saveDb()
+}
+
+async function deleteReview(id) {
+  const db = await getDb()
+  db.run('DELETE FROM content_reviews WHERE id = ?', [id])
+  saveDb()
+}
+
+async function getReviewStats(accountId = 'default', platform) {
+  const db = await getDb()
+  let where = 'WHERE account_id = ?', params = [accountId]
+  if (platform) { where += ' AND platform = ?'; params.push(platform) }
+  const total = db.exec('SELECT COUNT(*), AVG(views), AVG(likes), AVG(comments) FROM content_reviews ' + where, params)
+  const byPlatform = db.exec('SELECT platform, COUNT(*), AVG(views), AVG(likes) FROM content_reviews ' + where + ' GROUP BY platform', params)
+  return {
+    total: total.length ? { count: total[0].values[0][0], avgViews: total[0].values[0][1], avgLikes: total[0].values[0][2], avgComments: total[0].values[0][3] } : null,
+    byPlatform: byPlatform.length ? byPlatform[0].values.map(r => ({ platform: r[0], count: r[1], avgViews: r[2], avgLikes: r[3] })) : [],
+  }
+}
+
+// ==================== 竞品订阅 CRUD ====================
+
+async function saveCompetitorAlert(alert, accountId = 'default') {
+  const db = await getDb()
+  db.run('INSERT INTO competitor_alerts (account_id, competitor_id, alert_type, title, detail) VALUES (?, ?, ?, ?, ?)',
+    [accountId, alert.competitorId, alert.alertType, alert.title, alert.detail || ''])
+  saveDb()
+}
+
+async function getCompetitorAlerts(accountId = 'default', unreadOnly = false) {
+  const db = await getDb()
+  let query = 'SELECT id, competitor_id, alert_type, title, detail, is_read, created_at FROM competitor_alerts WHERE account_id = ?'
+  const params = [accountId]
+  if (unreadOnly) { query += ' AND is_read = 0' }
+  query += ' ORDER BY created_at DESC LIMIT 50'
+  const res = db.exec(query, params)
+  if (!res.length) return []
+  return res[0].values.map(row => ({
+    id: row[0], competitorId: row[1], alertType: row[2], title: row[3], detail: row[4], isRead: !!row[5], createdAt: row[6],
+  }))
+}
+
+async function markAlertRead(id) {
+  const db = await getDb()
+  db.run('UPDATE competitor_alerts SET is_read = 1 WHERE id = ?', [id])
+  saveDb()
+}
+
+async function markAllAlertsRead(accountId = 'default') {
+  const db = await getDb()
+  db.run('UPDATE competitor_alerts SET is_read = 1 WHERE account_id = ?', [accountId])
+  saveDb()
+}
+
+async function updateCompetitorCheckTime(id) {
+  const db = await getDb()
+  db.run("UPDATE competitors SET last_checked_at = datetime('now','localtime') WHERE id = ?", [id])
+  saveDb()
+}
+
+async function getStaleCompetitors(accountId = 'default', hoursThreshold = 24) {
+  const db = await getDb()
+  const res = db.exec("SELECT id, platform, user_id, nickname FROM competitors WHERE account_id = ? AND (last_checked_at IS NULL OR last_checked_at < datetime('now', '-' || ? || ' hours')) ORDER BY last_checked_at ASC NULLS FIRST", [accountId, hoursThreshold])
+  if (!res.length) return []
+  return res[0].values.map(row => ({ id: row[0], platform: row[1], userId: row[2], nickname: row[3] }))
+}
+
 module.exports = {
   getDb, saveDb: flushDb, reloadDb, saveScript, getScript, listScripts,
   createConversation, updateConversationTitle, deleteConversation, togglePinConversation,
@@ -1617,4 +1924,12 @@ module.exports = {
   addCompetitor, removeCompetitor, getCompetitors, getCompetitorRecentContent,
   vacuumDb,
   addSyncLog, getSyncLogs, getSyncMeta, setSyncMeta,
+  // 内容日历
+  createScheduleItem, getScheduleItems, updateScheduleItem, deleteScheduleItem, getRecommendedTimes,
+  // 评论舆情
+  saveComments, getCommentsByVideo, updateCommentSentiment, getCommentSummary, deleteCommentsByVideo,
+  // 内容复盘
+  createReview, getReviews, updateReview, deleteReview, getReviewStats,
+  // 竞品订阅
+  saveCompetitorAlert, getCompetitorAlerts, markAlertRead, markAllAlertsRead, updateCompetitorCheckTime, getStaleCompetitors,
 }

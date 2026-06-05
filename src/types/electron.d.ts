@@ -271,6 +271,37 @@ export interface TrendingConfig {
   lastRefresh: number
 }
 
+export interface ScheduleItem {
+  id: number; accountId: string; topicId: number | null; platform: string; title: string
+  status: 'planned' | 'scheduled' | 'published' | 'skipped'
+  plannedDate: string | null; plannedTime: string | null; actualDate: string | null
+  notes: string; createdAt: string
+}
+export interface Comment {
+  id: number; videoId: string; platform: string; authorName: string; content: string
+  likeCount: number; replyCount: number
+  sentiment: 'positive' | 'neutral' | 'negative' | ''; tags: string[]; createdAt: string
+}
+export interface CommentSummary {
+  total: number; sentimentBreakdown: [string, number][]; topTags: { tag: string; count: number }[]
+}
+export interface ContentReview {
+  id: number; accountId: string; scheduleId: number | null; scriptId: number | null
+  platform: string; title: string; publishDate: string
+  views: number; likes: number; comments: number; shares: number; saves: number; newFollowers: number
+  predictedViews: number; predictedLikes: number
+  aiAnalysis: string; userNotes: string; rating: number; createdAt: string
+}
+export interface ReviewStats {
+  total: { count: number; avgViews: number; avgLikes: number; avgComments: number } | null
+  byPlatform: { platform: string; count: number; avgViews: number; avgLikes: number }[]
+}
+export interface CompetitorAlert {
+  id: number; competitorId: number
+  alertType: 'new_video' | 'strategy_change' | 'performance_drop'
+  title: string; detail: string; isRead: boolean; createdAt: string
+}
+
 export interface ElectronAPI {
   // 平台信息
   platform: string
@@ -374,6 +405,30 @@ export interface ElectronAPI {
   syncLogs: () => Promise<{ id: number; protocol: string; direction: string; status: string; filesChanged: number; conflicts: number; bytesTransferred: number; errorMessage: string | null; createdAt: string }[]>
   syncMetaGet: (key: string) => Promise<string | null>
   onSyncEvent: (callback: (event: string) => void) => () => void
+  // 内容日历
+  scheduleCreate: (data: { topicId?: number; platform: string; title: string; plannedDate?: string; plannedTime?: string; notes?: string }) => Promise<{ ok: boolean }>
+  scheduleList: (startDate?: string, endDate?: string) => Promise<ScheduleItem[]>
+  scheduleUpdate: (id: number, updates: Record<string, unknown>) => Promise<{ ok: boolean }>
+  scheduleDelete: (id: number) => Promise<{ ok: boolean }>
+  scheduleRecommendedTimes: (platform: string) => Promise<{ hour: string; avgEngagement: number }[]>
+  // 评论舆情
+  commentsCrawl: (platform: string, videoId: string) => Promise<{ ok: boolean; count?: number; error?: string }>
+  commentsList: (videoId: string) => Promise<Comment[]>
+  commentsAnalyze: (videoId: string) => Promise<{ ok: boolean; analyzed?: number; error?: string }>
+  commentsSummary: (platform?: string) => Promise<CommentSummary>
+  commentsWriteMemories: (videoId: string) => Promise<{ ok: boolean; memories?: number }>
+  // 内容复盘
+  reviewCreate: (data: Record<string, unknown>) => Promise<{ ok: boolean }>
+  reviewList: (platform?: string) => Promise<ContentReview[]>
+  reviewUpdate: (id: number, updates: Record<string, unknown>) => Promise<{ ok: boolean }>
+  reviewDelete: (id: number) => Promise<{ ok: boolean }>
+  reviewStats: (platform?: string) => Promise<ReviewStats>
+  reviewAiAnalyze: (reviewId: number) => Promise<{ ok: boolean; analysis?: string; error?: string }>
+  // 竞品订阅
+  competitorCheckNow: () => Promise<{ checked: number; alerts: number }>
+  competitorAlerts: (unreadOnly?: boolean) => Promise<CompetitorAlert[]>
+  competitorAlertRead: (id: number) => Promise<{ ok: boolean }>
+  competitorAlertReadAll: () => Promise<{ ok: boolean }>
 }
 
 declare global {

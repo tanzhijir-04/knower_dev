@@ -1336,3 +1336,190 @@ ipcMain.handle('sync-logs', async () => {
 ipcMain.handle('sync-meta-get', async (_event, key: string) => {
   return await db.getSyncMeta(key)
 })
+
+// ============================================================
+//  内容日历
+// ============================================================
+
+ipcMain.handle('schedule-create', async (_event, data: Record<string, unknown>) => {
+  const active = await db.getActiveAccount()
+  await db.createScheduleItem({ ...data, accountId: active?.id || 'default' })
+  return { ok: true }
+})
+ipcMain.handle('schedule-list', async (_event, startDate?: string, endDate?: string) => {
+  const active = await db.getActiveAccount()
+  return db.getScheduleItems(active?.id || 'default', startDate, endDate)
+})
+ipcMain.handle('schedule-update', async (_event, id: number, updates: Record<string, unknown>) => {
+  await db.updateScheduleItem(id, updates)
+  return { ok: true }
+})
+ipcMain.handle('schedule-delete', async (_event, id: number) => {
+  await db.deleteScheduleItem(id)
+  return { ok: true }
+})
+ipcMain.handle('schedule-recommended-times', async (_event, platform: string) => {
+  const active = await db.getActiveAccount()
+  return db.getRecommendedTimes(active?.id || 'default', platform)
+})
+
+// ============================================================
+//  评论舆情
+// ============================================================
+
+ipcMain.handle('comments-crawl', async (_event, platform: string, videoId: string) => {
+  const { crawlVideoComments } = require('../knower-agent/lib/crawler')
+  const active = await db.getActiveAccount()
+  try {
+    const rawComments = await crawlVideoComments(platform, videoId)
+    // 映射不同平台的字段名到统一格式
+    const comments = rawComments.map((c: any) => {
+      if (platform === 'bili') {
+        return {
+          videoId,
+          authorName: c.member?.uname || '',
+          authorUid: String(c.member?.mid || ''),
+          content: c.content?.message || c.content || '',
+          likeCount: c.like || 0,
+          replyCount: c.rcount || 0,
+        }
+      } else if (platform === 'dy') {
+        return {
+          videoId,
+          authorName: c.user?.nickname || '',
+          authorUid: String(c.user?.uid || ''),
+          content: c.text || '',
+          likeCount: c.digg_count || 0,
+          replyCount: c.reply_comment_total || 0,
+        }
+      } else if (platform === 'xhs') {
+        return {
+          videoId,
+          authorName: c.user_info?.nickname || '',
+          authorUid: String(c.user_info?.user_id || ''),
+          content: c.content || '',
+          likeCount: c.like_count || 0,
+          replyCount: c.sub_comment_count || 0,
+        }
+      } else {
+        // wb / 通用降级
+        return {
+          videoId,
+          authorName: c.user?.screen_name || c.user?.nickname || '',
+          authorUid: String(c.user?.id || ''),
+          content: c.text || c.content || '',
+          likeCount: c.like_count || c.attitudes_count || 0,
+          replyCount: c.reply_count || 0,
+        }
+      }
+    })
+    await db.saveComments(comments, active?.id || 'default')
+    return { ok: true, count: comments.length }
+  } catch (e: any) { return { ok: false, error: e.message } }
+})
+ipcMain.handle('comments-list', async (_event, videoId: string) => {
+  const active = await db.getActiveAccount()
+  return db.getCommentsByVideo(videoId, active?.id || 'default')
+})
+ipcMain.handle('comments-analyze', async (_event, videoId: string) => {
+  const { callLLM } = require('../knower-agent/llm/client')
+  const active = await db.getActiveAccount()
+  const comments = await db.getCommentsByVideo(videoId, active?.id || 'default')
+  if (!comments.length) return { ok: false, error: '没有评论数据' }
+  const batchSize = 20
+  for (let i = 0; i < comments.length; i += batchSize) {
+    const batch = comments.slice(i, i + batchSize)
+    const text = batch.map((c: any, idx: number) => `[${idx}] (${c.likeCount}赞) ${c.content}`).join('\n')
+    const prompt = `分析以下视频评论，为每条标注情感(positive/neutral/negative)并提取话题标签。输出JSON数组：[{"index":0,"sentiment":"positive","tags":["tag"]},...]\n\n${text}`
+    try {
+      const result = await callLLM(prompt, { maxTokens: 2000 })
+      const analyses = JSON.parse(result)
+      for (const a of analyses) { if (batch[a.index]) await db.updateCommentSentiment(batch[a.index].id, a.sentiment, a.tags) }
+    } catch { /* skip batch */ }
+  }
+  return { ok: true, analyzed: comments.length }
+})
+ipcMain.handle('comments-summary', async (_event, platform?: string) => {
+  const active = await db.getActiveAccount()
+  return db.getCommentSummary(active?.id || 'default', platform)
+})
+ipcMain.handle('comments-write-memories', async (_event, videoId: string) => {
+  const active = await db.getActiveAccount()
+  const comments = await db.getCommentsByVideo(videoId, active?.id || 'default')
+  const allTags = comments.flatMap((c: any) => c.tags || [])
+  const tagFreq: Record<string, number> = {}
+  for (const t of allTags) { tagFreq[t] = (tagFreq[t] || 0) + 1 }
+  const top = Object.entries(tagFreq).sort((a, b) => b[1] - a[1]).slice(0, 5)
+  if (top.length) {
+    await db.upsertMemory({ accountId: active?.id || 'default', type: 'content_pattern', key: '观众反馈关注点',
+      value: '观众最关注：' + top.map(([t, c]) => t + '(' + c + '次)').join('、'),
+      evidence: '基于 ' + comments.length + ' 条评论', weight: 0.6 })
+  }
+  return { ok: true, memories: top.length }
+})
+
+// ============================================================
+//  内容复盘
+// ============================================================
+
+ipcMain.handle('review-create', async (_event, data: Record<string, unknown>) => {
+  const active = await db.getActiveAccount()
+  await db.createReview(data, active?.id || 'default')
+  return { ok: true }
+})
+ipcMain.handle('review-list', async (_event, platform?: string) => {
+  const active = await db.getActiveAccount()
+  return db.getReviews(active?.id || 'default', platform)
+})
+ipcMain.handle('review-update', async (_event, id: number, updates: Record<string, unknown>) => {
+  await db.updateReview(id, updates)
+  return { ok: true }
+})
+ipcMain.handle('review-delete', async (_event, id: number) => {
+  await db.deleteReview(id)
+  return { ok: true }
+})
+ipcMain.handle('review-stats', async (_event, platform?: string) => {
+  const active = await db.getActiveAccount()
+  return db.getReviewStats(active?.id || 'default', platform)
+})
+ipcMain.handle('review-ai-analyze', async (_event, reviewId: number) => {
+  const { callLLM } = require('../knower-agent/llm/client')
+  const active = await db.getActiveAccount()
+  const reviews = await db.getReviews(active?.id || 'default')
+  const review = reviews.find((r: any) => r.id === reviewId)
+  if (!review) return { ok: false, error: '复盘记录不存在' }
+  const prompt = '你是视频运营分析师。根据以下数据给出简短复盘（200字内）。\n标题：' + review.title + '\n平台：' + review.platform + '\n播放：' + review.views + ' 点赞：' + review.likes + ' 评论：' + review.comments + ' 收藏：' + review.saves + '\n预测播放：' + review.predictedViews + ' 预测点赞：' + review.predictedLikes + '\n自评：' + review.rating + '/5\n直接输出分析。'
+  const analysis = await callLLM(prompt, { maxTokens: 500 })
+  await db.updateReview(reviewId, { aiAnalysis: analysis })
+  if (review.views > 0) {
+    const rate = ((review.likes + review.comments + review.saves) / review.views * 100).toFixed(1)
+    await db.upsertMemory({ accountId: active?.id || 'default', type: 'content_pattern',
+      key: review.platform + '内容表现', value: '"' + review.title + '" 播放 ' + review.views + '，互动率 ' + rate + '%',
+      evidence: '实际数据 ' + review.publishDate, weight: 0.5 })
+  }
+  return { ok: true, analysis }
+})
+
+// ============================================================
+//  竞品订阅
+// ============================================================
+
+ipcMain.handle('competitor-check-now', async () => {
+  const { checkCompetitors } = require('../knower-agent/lib/competitorWatcher')
+  const active = await db.getActiveAccount()
+  return checkCompetitors(active?.id || 'default')
+})
+ipcMain.handle('competitor-alerts', async (_event, unreadOnly?: boolean) => {
+  const active = await db.getActiveAccount()
+  return db.getCompetitorAlerts(active?.id || 'default', unreadOnly)
+})
+ipcMain.handle('competitor-alert-read', async (_event, id: number) => {
+  await db.markAlertRead(id)
+  return { ok: true }
+})
+ipcMain.handle('competitor-alert-read-all', async () => {
+  const active = await db.getActiveAccount()
+  await db.markAllAlertsRead(active?.id || 'default')
+  return { ok: true }
+})

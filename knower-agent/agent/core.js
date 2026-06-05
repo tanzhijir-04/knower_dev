@@ -450,6 +450,9 @@ class Agent {
   async *stream(userInput, options = {}) {
     const { signal, conversationId } = options
 
+    const { startWatcher } = require('../lib/competitorWatcher')
+    startWatcher()
+
     cleanupOldCheckpoints()
 
     const tracker = new ExecutionTracker()
