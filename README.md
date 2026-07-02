@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://knower-ai.page.dev">官网</a> ·
+  <a href="https://knower-ai.pages.dev">官网</a> ·
   <a href="#快速开始">快速开始</a> ·
   <a href="#feature-highlights">功能</a> ·
   <a href="https://github.com/tanzhijir-04/knower_dev/issues">反馈</a> · <a href="https://ifdian.net/a/tanz666/plan">☕赞助打赏</a>
